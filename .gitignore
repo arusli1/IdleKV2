@@ -1,4 +1,39 @@
-# macOS
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Results (tracked separately or via DVC)
+results/
+*.json
+!configs/*.yaml
+
+# Models and data (too large for git)
+models/
+data/
+*.bin
+*.safetensors
+
+# Environment
+.venv/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/*.ipynb
+!notebooks/.gitkeep
+
+# System
 .DS_Store
 .DS_Store?
 ._*
@@ -7,18 +42,14 @@
 ehthumbs.db
 Thumbs.db
 
-# Build artifacts
-build/
-dist/
+# Build artifacts (additional)
 *.exe
 *.o
 *.a
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+# CUDA
+*.ptx
+*.cubin
 
 # Logs
 *.log
