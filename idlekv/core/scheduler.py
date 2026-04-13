@@ -109,7 +109,7 @@ class IdleScheduler:
             query_buffer=self.query_buffer,
             model=self.model,
             budget_per_layer=self.budget_per_layer,
-            num_layers=self.num_layers,
+            num_layers_arg=self.num_layers,
             interrupt_flag=check,
         )
         p1_time = (time.perf_counter() - p1_start) * 1000

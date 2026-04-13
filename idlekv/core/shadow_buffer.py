@@ -68,7 +68,7 @@ class ShadowBuffer:
         buf = self.layers[layer_idx]
         num_evicted = keys.shape[1]
 
-        if num_evicted == 0:
+        if num_evicted == 0 or buf.max_size == 0:
             return
 
         if num_evicted >= buf.max_size:
