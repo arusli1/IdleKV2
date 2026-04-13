@@ -103,10 +103,10 @@ def load_model_and_tokenizer(model_cfg: dict, device: str = "auto"):
     else:
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg['name'],
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             device_map="auto"
         )
-        device = "cuda"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model.eval()
     return model, tokenizer, device

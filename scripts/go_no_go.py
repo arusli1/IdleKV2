@@ -28,7 +28,7 @@ from idlekv.core.compression import CompressedKVManager
 from idlekv.utils.kv_cache import get_layer_kv, cache_size
 
 
-def create_needle_test(tokenizer, context_length=4096, needle_depth=0.5, device="cuda"):
+def create_needle_test(tokenizer, context_length=4096, needle_depth=0.5, device="cuda" if torch.cuda.is_available() else "cpu"):
     """
     Create a simple needle-in-a-haystack test.
 
@@ -163,7 +163,7 @@ def main():
     if device == "cuda":
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             device_map="auto",
             attn_implementation="sdpa",
         )

@@ -16,7 +16,7 @@ class QueryBuffer:
     Rolling buffer of recent hidden states from generation.
 
     Usage:
-        qbuf = QueryBuffer(buffer_size=32, hidden_dim=4096, device="cuda")
+        qbuf = QueryBuffer(buffer_size=32, hidden_dim=4096, device="cuda" if torch.cuda.is_available() else "cpu")
         # During generation, after each token:
         qbuf.append(hidden_states)  # [1, hidden_dim]
         # At idle time:
@@ -27,8 +27,8 @@ class QueryBuffer:
         self,
         buffer_size: int = 32,
         hidden_dim: int = 4096,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.float16,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        dtype: torch.dtype = torch.float16 if torch.cuda.is_available() else torch.float32,
     ):
         self.buffer_size = buffer_size
         self.hidden_dim = hidden_dim

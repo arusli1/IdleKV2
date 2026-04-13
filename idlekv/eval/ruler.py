@@ -26,7 +26,7 @@ class RulerResult:
     num_samples: int
 
 
-def create_niah_test(tokenizer, context_length: int = 4096, num_needles: int = 1, device: str = "cuda"):
+def create_niah_test(tokenizer, context_length: int = 4096, num_needles: int = 1, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
     """
     Create a needle-in-a-haystack test for RULER evaluation.
 
@@ -106,7 +106,7 @@ def evaluate_ruler_niah(
     context_length: int = 4096,
     subtasks: Optional[List[str]] = None,
     num_samples: int = 50,
-    device: str = "cuda",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
     manager = None,
     **kwargs
 ) -> List[RulerResult]:

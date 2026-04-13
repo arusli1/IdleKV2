@@ -102,17 +102,17 @@ class CompressedKVManager:
         # Store full KV (CPU or GPU based on config)
         self.full_kv_store.store(full_kv)
 
-        # Compute budget
-        self.budget_per_layer = int(seq_len * (1 - self.compression_ratio))
-
-        # Compress: keep top-k tokens per layer using SnapKV-style scoring
-        compressed_kv = self._compress(full_kv, input_ids, self.budget_per_layer)
-
         # Reset buffers for new session
         self.shadow_buffer.clear()
         self.query_buffer.clear()
         # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
         self.generated_kv_lists = [[] for _ in range(self.num_layers)]
+
+        # Compute budget
+        self.budget_per_layer = int(seq_len * (1 - self.compression_ratio))
+
+        # Compress: keep top-k tokens per layer using SnapKV-style scoring
+        compressed_kv = self._compress(full_kv, input_ids, self.budget_per_layer)
 
         return compressed_kv
 

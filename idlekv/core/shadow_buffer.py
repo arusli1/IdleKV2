@@ -29,7 +29,7 @@ class ShadowBuffer:
     Per-layer FIFO ring buffer for evicted KV pairs.
 
     Usage:
-        buf = ShadowBuffer(num_layers=32, max_size=256, num_kv_heads=8, head_dim=128, device="cuda")
+        buf = ShadowBuffer(num_layers=32, max_size=256, num_kv_heads=8, head_dim=128, device="cuda" if torch.cuda.is_available() else "cpu")
         buf.push(layer_idx=0, keys=evicted_k, values=evicted_v)
         shadow_k, shadow_v = buf.get(layer_idx=0)
     """
@@ -40,8 +40,8 @@ class ShadowBuffer:
         max_size: int,
         num_kv_heads: int,
         head_dim: int,
-        device: str = "cuda",
-        dtype: torch.dtype = torch.float16,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        dtype: torch.dtype = torch.float16 if torch.cuda.is_available() else torch.float32,
     ):
         self.num_layers = num_layers
         self.max_size = max_size

@@ -68,7 +68,7 @@ def simulate_agentic_workload(
     input_ids: torch.Tensor,
     manager: Optional[CompressedKVManager] = None,
     config: Optional[SimulationConfig] = None,
-    device: str = "cuda"
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
 ) -> SimulationResult:
     """
     Simulate an agentic workload with tool-call pauses and IdleKV refinement.

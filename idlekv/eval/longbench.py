@@ -74,7 +74,7 @@ def evaluate_longbench(
     tokenizer,
     subtasks: Optional[List[str]] = None,
     num_samples: int = 50,
-    device: str = "cuda",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
     manager = None,
     **kwargs
 ) -> List[LongBenchResult]:
