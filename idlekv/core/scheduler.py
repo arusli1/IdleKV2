@@ -10,13 +10,14 @@ Tier 1 (100ms-2s): Phase 1 + Phase 2 (progressive, as many layers as fit)
 
 import time
 import threading
+import torch
 from typing import Optional
 from dataclasses import dataclass
 
 from idlekv.core.shadow_buffer import ShadowBuffer
 from idlekv.core.query_buffer import QueryBuffer
 from idlekv.core.phase1_rescore import phase1_rescore
-from idlekv.core.phase2_refresh import phase2_refresh, CPUKVStore
+from idlekv.core.phase2_refresh import phase2_refresh, FullKVStore
 
 
 @dataclass
@@ -48,25 +49,27 @@ class IdleScheduler:
         self,
         shadow_buffer: ShadowBuffer,
         query_buffer: QueryBuffer,
-        cpu_kv_store: CPUKVStore,
+        full_kv_store: FullKVStore,
         model,
         budget_per_layer: int,
         num_layers: int,
     ):
         self.shadow_buffer = shadow_buffer
         self.query_buffer = query_buffer
-        self.cpu_kv_store = cpu_kv_store
+        self.full_kv_store = full_kv_store
         self.model = model
         self.budget_per_layer = budget_per_layer
         self.num_layers = num_layers
-        self._interrupted = False
+
+        # Fix Bug 5: Use threading.Event for thread safety
+        self._stop_event = threading.Event()
 
     def _check_interrupt(self) -> bool:
-        return self._interrupted
+        return self._stop_event.is_set()
 
     def interrupt(self):
         """Call this when the tool returns to stop refinement."""
-        self._interrupted = True
+        self._stop_event.set()
 
     @torch.no_grad()
     def run(
@@ -87,15 +90,14 @@ class IdleScheduler:
         Returns:
             RefinementResult with updated cache and timing info.
         """
-        import torch
-        self._interrupted = False
+        self._stop_event.clear()  # Reset the event
         start = time.perf_counter()
 
         # Set up timeout if specified
         if max_time_ms is not None:
             deadline = start + max_time_ms / 1000.0
             def check():
-                return self._interrupted or time.perf_counter() > deadline
+                return self._stop_event.is_set() or time.perf_counter() > deadline
         else:
             check = self._check_interrupt
 
@@ -118,16 +120,15 @@ class IdleScheduler:
         p2_layers = 0
         p2_start = time.perf_counter()
 
-        if not check() and len(self.cpu_kv_store) > 0:
+        if not check() and len(self.full_kv_store) > 0:
             p2_ran = True
             kv = phase2_refresh(
                 past_key_values=kv,
-                cpu_full_kv=self.cpu_kv_store.layers,
+                full_kv_store=self.full_kv_store,
                 generated_kv=generated_kv or [],
                 query_buffer=self.query_buffer,
                 model=self.model,
                 budget_per_layer=self.budget_per_layer,
-                num_layers=self.num_layers,
                 interrupt_flag=check,
             )
             # Count how many layers were actually refreshed
@@ -145,9 +146,7 @@ class IdleScheduler:
             phase2_layers_refreshed=p2_layers,
             phase2_time_ms=p2_time,
             total_time_ms=total_time,
-            was_interrupted=self._interrupted,
+            was_interrupted=self._stop_event.is_set(),
         )
 
 
-# Needed for type checking in run()
-import torch

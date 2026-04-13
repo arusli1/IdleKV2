@@ -1,0 +1,17 @@
+# Model specifications for IdleKV experiments
+
+llama8b:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  num_layers: 32
+  num_kv_heads: 8
+  num_q_heads: 32
+  head_dim: 128
+  hidden_dim: 4096
+
+qwen7b:
+  name: Qwen/Qwen2.5-7B-Instruct
+  num_layers: 28
+  num_kv_heads: 4
+  num_q_heads: 28
+  head_dim: 128
+  hidden_dim: 3584

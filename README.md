@@ -1,71 +1,90 @@
 # IdleKV
 
-**Treating agentic idle time as a first-class compute resource for KV cache quality recovery.**
+Treating agentic idle time as a first-class compute resource for KV cache quality recovery. IdleKV runs refinement operations during tool-call pauses in agentic LLM workflows to improve compressed KV cache quality without affecting user-perceived latency.
 
-IdleKV recovers KV cache quality lost during compression by running refinement operations during GPU idle time in agentic LLM inference (tool-call pauses). It adds no measurable overhead to generation throughput.
+## Setup
 
-## Quick Start
-
+### Mac Development (CPU)
 ```bash
+git clone https://github.com/user/IdleKV.git
+cd IdleKV
 pip install -e ".[dev]"
-
-# Run the Day 3 go/no-go check
-python scripts/go_no_go.py --model meta-llama/Llama-3.1-8B-Instruct --ratio 0.5
-
-# Run full experiment suite
-python scripts/run_experiments.py --config configs/main.yaml
+pytest tests/ -v
 ```
 
-## Repo Structure
-
+### GPU Experiments (RTX 6000 96GB)
+```bash
+# On GPU machine
+git pull
+pip install -e ".[dev]"
+pip install flash-attn --no-build-isolation
+pytest tests/ -v  # Should pass on GPU too
 ```
-idlekv/
+
+## Running Experiments
+
+### Step 1: Go/No-Go Check (< 10 min)
+Test if Phase 1 refinement provides meaningful accuracy gains:
+```bash
+python scripts/go_no_go.py --model meta-llama/Llama-3.1-8B-Instruct --num-trials 5
+```
+
+### Step 2: Full Experiment Suite
+Run incremental subsets:
+```bash
+# Quick baseline comparison
+python scripts/run_experiments.py --config configs/main.yaml --only-baselines --model llama8b
+
+# IdleKV ablation study  
+python scripts/run_experiments.py --config configs/main.yaml --only-idlekv --model llama8b
+
+# Full suite (all baselines + IdleKV + ablations)
+python scripts/run_experiments.py --config configs/main.yaml --model llama8b --seed 42
+```
+
+### Step 3: Generate Figures
+```bash
+python scripts/plot_figures.py --results-dir results/
+```
+
+## Repository Structure
+```
+IdleKV/
 ├── idlekv/
-│   ├── core/
-│   │   ├── shadow_buffer.py      # FIFO ring buffer for evicted KV pairs
-│   │   ├── phase1_rescore.py     # TIR-informed re-scoring during idle time
-│   │   ├── phase2_refresh.py     # Progressive full-attention refresh
-│   │   ├── query_buffer.py       # Rolling buffer of recent hidden states
-│   │   ├── scheduler.py          # Tiered idle-time scheduler
-│   │   └── compression.py        # SnapKV wrapper with shadow buffer hooks
-│   ├── eval/
-│   │   ├── ruler.py              # RULER benchmark runner
-│   │   ├── longbench.py          # LongBench benchmark runner
-│   │   ├── metrics.py            # KL divergence, recovery delta, throughput
-│   │   └── runner.py             # Unified experiment runner
-│   ├── simulation/
-│   │   ├── harness.py            # Agentic simulation (pause/resume generation)
-│   │   └── tool_distributions.py # Tool-call duration distributions
-│   ├── baselines/
-│   │   └── kvpress_baselines.py  # Wrappers for SnapKV, H2O, StreamingLLM, sync refresh
-│   └── utils/
-│       ├── logging.py            # Structured JSON logging
-│       ├── timing.py             # GPU timing utilities (CUDA events)
-│       └── memory.py             # Memory tracking
-├── scripts/
-│   ├── go_no_go.py               # Day 3 decision gate
-│   ├── run_experiments.py        # Full experiment suite
-│   ├── run_ablations.py          # Ablation studies
-│   └── plot_figures.py           # Generate paper figures
+│   ├── core/                    # Core IdleKV components
+│   │   ├── compression.py       # CompressedKVManager (main interface)
+│   │   ├── phase1_rescore.py   # Fast re-scoring with shadow buffer
+│   │   ├── phase2_refresh.py   # Progressive full-attention refresh
+│   │   ├── scheduler.py        # Idle-time scheduler
+│   │   ├── shadow_buffer.py    # Recently evicted KV storage
+│   │   └── query_buffer.py     # Recent query tracking
+│   ├── eval/                   # Benchmark implementations
+│   │   ├── ruler.py            # RULER needle-in-a-haystack
+│   │   ├── longbench.py        # LongBench multi-task
+│   │   └── metrics.py          # Evaluation utilities
+│   ├── simulation/             # Agentic workload simulation
+│   │   ├── harness.py          # Tool-call pause simulator
+│   │   └── tool_distributions.py
+│   ├── baselines/              # Baseline implementations
+│   │   └── kvpress_baselines.py
+│   └── utils/                  # Utilities
+│       ├── kv_cache.py         # DynamicCache/tuple compatibility
+│       ├── memory.py           # Memory monitoring
+│       └── timing.py           # Performance measurement
 ├── configs/
-│   ├── main.yaml                 # Main experiment config
-│   ├── ablations.yaml            # Ablation configs
-│   └── models.yaml               # Model paths and settings
-├── tests/
-│   ├── test_shadow_buffer.py
-│   ├── test_phase1.py
-│   ├── test_phase2.py
-│   └── test_harness.py
-└── notebooks/
-    └── explore_results.ipynb     # Interactive results analysis
+│   ├── main.yaml              # Main experiment configuration
+│   └── models.yaml            # Model specifications
+├── scripts/
+│   ├── go_no_go.py            # Day 3 decision gate
+│   ├── run_experiments.py     # Full experiment runner
+│   └── plot_figures.py        # Result visualization
+└── tests/                     # Test suite (CPU compatible)
 ```
 
-## Key Design Decisions
+## Hardware Note
 
-1. **kvpress for baselines only.** IdleKV's refinement operates directly on `past_key_values` tensors, not through kvpress hooks. This avoids fighting kvpress's architecture.
+**Target hardware:** Single NVIDIA RTX PRO 6000 Blackwell (96GB GDDR7, 1792 GB/s bandwidth)
 
-2. **Atomic cache updates.** Phase 1 and Phase 2 build a new cache in a separate buffer, then swap atomically at completion. No partially-modified cache is ever visible to generation.
+With 96GB VRAM, full uncompressed KV caches (4K-8K context) easily fit on GPU alongside model weights. IdleKV keeps full prefill KV on GPU by default, eliminating CPU-GPU transfers during Phase 2 refresh.
 
-3. **Anytime interruption.** Both phases process layers independently. If the tool returns mid-refinement, already-processed layers keep their improvements; unprocessed layers keep their original state.
-
-4. **Reproducibility.** All experiments use 3 seeds. Configs are YAML. Results are structured JSON. Figures are generated from results, not hand-made.
+For smaller GPUs, set `offload_full_kv: true` in config to fall back to CPU storage.

@@ -14,59 +14,67 @@ import math
 from typing import Optional
 
 from idlekv.core.query_buffer import QueryBuffer
+from idlekv.utils.kv_cache import get_layer_kv, num_layers
 
 
 def phase2_refresh(
-    past_key_values: tuple,
-    cpu_full_kv: list,
+    past_key_values,
+    full_kv_store: 'FullKVStore',
     generated_kv: list,
     query_buffer: QueryBuffer,
     model,
     budget_per_layer: int,
-    num_layers: int,
     interrupt_flag: Optional[callable] = None,
     max_layers: Optional[int] = None,
-) -> tuple:
+):
     """
-    Progressive full-attention refresh using CPU-stored prefill KV.
+    Progressive full-attention refresh using stored prefill KV.
 
-    For each layer (shallow-first), loads the full prefill KV from CPU,
+    For each layer (shallow-first), loads the full prefill KV,
     concatenates with generated tokens' KV, computes importance scores
     using recent queries, and re-selects top-k for the compressed cache.
 
     Args:
         past_key_values: current compressed KV cache
-        cpu_full_kv: list of (K, V) per layer stored on CPU from last prefill.
-                     K shape: [1, H, S_prefill, D] on CPU
+        full_kv_store: FullKVStore containing prefill KV (CPU or GPU)
         generated_kv: list of (K, V) per layer for tokens generated since
                       last prefill. These are always retained (not evicted).
-                      K shape: [1, H, S_gen, D] on GPU
+                      K shape: [1, H, S_gen, D]
         query_buffer: recent hidden states for scoring
         model: HF model (for Q projections)
         budget_per_layer: target compressed cache size (excluding generated tokens)
-        num_layers: number of layers
         interrupt_flag: callable returning True if tool has returned
         max_layers: process at most this many layers (for partial refresh)
 
     Returns:
-        Updated past_key_values tuple
+        Updated past_key_values (same format as input)
     """
     recent_h = query_buffer.get()
     if recent_h.shape[0] == 0:
         return past_key_values
 
-    new_kv = list(past_key_values)
-    layers_to_process = min(num_layers, max_layers or num_layers)
+    from idlekv.utils.kv_cache import build_cache, clone_cache
+
+    compressed_layers = []
+    total_layers = num_layers(past_key_values)
+    layers_to_process = min(total_layers, max_layers or total_layers)
 
     for layer_idx in range(layers_to_process):
         if interrupt_flag is not None and interrupt_flag():
             break
 
-        # Load full prefill KV for this layer from CPU to GPU
-        full_k_cpu, full_v_cpu = cpu_full_kv[layer_idx]
-        full_k = full_k_cpu.to(recent_h.device, non_blocking=True)  # [1, H, S_prefill, D]
-        full_v = full_v_cpu.to(recent_h.device, non_blocking=True)
-        torch.cuda.synchronize()  # ensure transfer complete
+        # Get current compressed layer
+        current_k, current_v = get_layer_kv(past_key_values, layer_idx)
+
+        # Load full prefill KV for this layer (CPU or GPU)
+        full_k, full_v = full_kv_store.get_layer(layer_idx)
+
+        # Move to device if needed (CPU->GPU transfer or no-op if already on GPU)
+        if full_k.device != recent_h.device:
+            full_k = full_k.to(recent_h.device, non_blocking=True)  # [1, H, S_prefill, D]
+            full_v = full_v.to(recent_h.device, non_blocking=True)
+            if recent_h.device.type == 'cuda':
+                torch.cuda.synchronize()  # ensure transfer complete
 
         B, H, S_prefill, D = full_k.shape
 
@@ -116,38 +124,65 @@ def phase2_refresh(
             new_k = selected_k.unsqueeze(0)
             new_v = selected_v.unsqueeze(0)
 
-        new_kv[layer_idx] = (new_k, new_v)
+        compressed_layers.append((new_k, new_v))
 
-        # Free GPU memory from the loaded full KV
-        del full_k, full_v
+        # Free GPU memory from the loaded full KV if it was transferred
+        if full_k.device != full_kv_store.device:
+            del full_k, full_v
 
-    return tuple(new_kv)
+    # For unprocessed layers, keep the current compressed cache
+    for layer_idx in range(layers_to_process, total_layers):
+        current_k, current_v = get_layer_kv(past_key_values, layer_idx)
+        compressed_layers.append((current_k, current_v))
+
+    # Return in same format as input
+    return build_cache(compressed_layers)
 
 
-class CPUKVStore:
+class FullKVStore:
     """
-    Stores full uncompressed KV cache on CPU memory.
+    Stores full uncompressed KV cache in memory.
+
+    Fix Bug 6: For 96GB VRAM, can store on GPU (no CPU offload needed).
+    For smaller GPUs, falls back to CPU storage.
 
     Created during prefill. Updated after each tool-result prefill.
-    Loaded layer-by-layer to GPU during Phase 2.
+    Used during Phase 2 for full-attention refresh.
     """
 
-    def __init__(self):
+    def __init__(self, offload_to_cpu: bool = False):
+        self.offload_to_cpu = offload_to_cpu
         self.layers: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self.device = None
 
     @torch.no_grad()
-    def store(self, past_key_values: tuple):
-        """Store full KV cache from GPU to CPU."""
+    def store(self, past_key_values):
+        """Store full KV cache, optionally moving to CPU."""
+        from idlekv.utils.kv_cache import get_layer_kv, num_layers
+
         self.layers = []
-        for k, v in past_key_values:
-            self.layers.append((
-                k.to("cpu", non_blocking=True),
-                v.to("cpu", non_blocking=True),
-            ))
-        torch.cuda.synchronize()
+        total_layers = num_layers(past_key_values)
+
+        for layer_idx in range(total_layers):
+            k, v = get_layer_kv(past_key_values, layer_idx)
+
+            if self.offload_to_cpu:
+                # Move to CPU to save GPU memory
+                self.layers.append((
+                    k.to("cpu", non_blocking=True),
+                    v.to("cpu", non_blocking=True),
+                ))
+                self.device = "cpu"
+            else:
+                # Keep on GPU (96GB VRAM setup)
+                self.layers.append((k, v))
+                self.device = k.device
+
+        if self.offload_to_cpu and k.device.type == 'cuda':
+            torch.cuda.synchronize()
 
     def get_layer(self, layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get full KV for a single layer (still on CPU)."""
+        """Get full KV for a single layer."""
         return self.layers[layer_idx]
 
     def __len__(self):
@@ -160,3 +195,7 @@ class CPUKVStore:
             total += k.nelement() * k.element_size()
             total += v.nelement() * v.element_size()
         return total
+
+
+# Legacy alias for backward compatibility
+CPUKVStore = FullKVStore

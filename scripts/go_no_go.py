@@ -25,10 +25,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from idlekv.core.compression import CompressedKVManager
-from idlekv.eval.metrics import compute_kl_divergence, measure_throughput
+from idlekv.utils.kv_cache import get_layer_kv, cache_size
 
 
-def create_needle_test(tokenizer, context_length=4096, needle_depth=0.5):
+def create_needle_test(tokenizer, context_length=4096, needle_depth=0.5, device="cuda"):
     """
     Create a simple needle-in-a-haystack test.
 
@@ -57,22 +57,65 @@ def create_needle_test(tokenizer, context_length=4096, needle_depth=0.5):
 
     # Add question
     full_tokens = context_tokens + question_tokens
-    input_ids = torch.tensor([full_tokens[:context_length]], device="cuda")
+    input_ids = torch.tensor([full_tokens[:context_length]], device=device)
 
     return input_ids, "7392"
 
 
 def evaluate_needle(model, tokenizer, input_ids, past_key_values, expected_answer):
-    """Generate a short response and check if it contains the needle."""
+    """Generate a short response using manual greedy decoding and check if it contains the needle."""
+
+    # Use manual greedy decoding instead of model.generate()
+    # to avoid complex interactions with custom caches
+
+    generated_tokens = []
+    current_past_kv = past_key_values
+
+    # Get the current sequence length from the cache for position IDs
+    if current_past_kv is not None:
+        current_seq_len = cache_size(current_past_kv, layer_idx=0)
+    else:
+        current_seq_len = input_ids.shape[1]
+
     with torch.no_grad():
-        output = model.generate(
-            input_ids[:, -1:],
-            past_key_values=past_key_values,
-            max_new_tokens=20,
-            do_sample=False,
-        )
-    response = tokenizer.decode(output[0], skip_special_tokens=True)
-    return expected_answer in response
+        for step in range(20):  # max_new_tokens=20
+            # Create position IDs for the next token
+            position_ids = torch.tensor([[current_seq_len + step]],
+                                      device=input_ids.device, dtype=torch.long)
+
+            # Get next token input (last token if first step, else generated token)
+            if step == 0:
+                next_input = input_ids[:, -1:]  # Use last token from input
+            else:
+                next_input = torch.tensor([[generated_tokens[-1]]],
+                                        device=input_ids.device, dtype=torch.long)
+
+            # Forward pass
+            output = model(
+                input_ids=next_input,
+                past_key_values=current_past_kv,
+                position_ids=position_ids,
+                use_cache=True,
+                output_hidden_states=True
+            )
+
+            # Get next token (greedy)
+            logits = output.logits[0, -1, :]  # [vocab_size]
+            next_token = logits.argmax().item()
+
+            # Check for early stopping
+            if next_token == tokenizer.eos_token_id:
+                break
+
+            generated_tokens.append(next_token)
+            current_past_kv = output.past_key_values
+
+    # Decode response
+    if generated_tokens:
+        response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        return expected_answer in response
+    else:
+        return False
 
 
 def main():
@@ -82,10 +125,26 @@ def main():
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--num-trials", type=int, default=20)
     parser.add_argument("--shadow-size", type=int, default=256)
+    parser.add_argument("--device", type=str, default=None,
+                       help="Device to use. Defaults to 'cuda' if available, else 'cpu'")
     args = parser.parse_args()
+
+    # Determine device
+    if args.device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    else:
+        device = args.device
+
+    # Skip gracefully on CPU
+    if device == "cpu":
+        print("⚠️  Running on CPU. This script is designed for GPU evaluation.")
+        print("   Results may not be representative of GPU performance.")
+        print("   Consider running on a CUDA-enabled GPU for accurate benchmarks.")
+        print()
 
     print(f"=== IdleKV Go/No-Go Gate ===")
     print(f"Model: {args.model}")
+    print(f"Device: {device}")
     print(f"Compression ratio: {args.ratio}")
     print(f"Context length: {args.context_length}")
     print(f"Trials: {args.num_trials}")
@@ -94,12 +153,25 @@ def main():
     # Load model
     print("Loading model...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=torch.float16,
-        device_map="cuda",
-        attn_implementation="sdpa",
-    )
+
+    # Set tokenizer pad token if not set
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    if device == "cuda":
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            attn_implementation="sdpa",
+        )
+    else:
+        # CPU configuration
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=torch.float32,  # Use float32 for CPU
+            device_map="cpu",
+        )
     model.eval()
 
     # Run trials
@@ -109,7 +181,7 @@ def main():
     for trial in range(args.num_trials):
         depth = (trial + 1) / (args.num_trials + 1)  # vary needle depth
         input_ids, answer = create_needle_test(
-            tokenizer, args.context_length, needle_depth=depth
+            tokenizer, args.context_length, needle_depth=depth, device=device
         )
 
         # --- Baseline: SnapKV compression, no refinement ---
@@ -127,16 +199,55 @@ def main():
         )
         idlekv_kv = manager_idlekv.prefill(input_ids)
 
-        # Simulate: generate a few tokens to populate query buffer
+        # Warmup: generate tokens one-by-one to populate query buffer
         # (Phase 1 needs recent queries to re-score)
+        current_kv = idlekv_kv
+        current_seq_len = cache_size(current_kv, layer_idx=0) if current_kv else input_ids.shape[1]
+
         with torch.no_grad():
-            for _ in range(32):
-                out = model(input_ids[:, -1:], past_key_values=idlekv_kv, use_cache=True)
-                idlekv_kv = out.past_key_values
+            for step in range(32):
+                # Create position IDs for the next token
+                position_ids = torch.tensor([[current_seq_len + step]],
+                                          device=device, dtype=torch.long)
+
+                # Use last generated token or last input token
+                if step == 0:
+                    next_input = input_ids[:, -1:]  # Last token from input
+                else:
+                    # Generate next token from logits
+                    next_token = current_logits.argmax(dim=-1, keepdim=True)
+                    next_input = next_token
+
+                # Forward pass
+                out = model(
+                    input_ids=next_input,
+                    past_key_values=current_kv,
+                    position_ids=position_ids,
+                    use_cache=True,
+                    output_hidden_states=True
+                )
+
+                # Extract new KV pairs for this token
+                new_kv_per_layer = []
+                if out.past_key_values:
+                    for layer_idx in range(manager_idlekv.num_layers):
+                        k_new, v_new = get_layer_kv(out.past_key_values, layer_idx)
+                        # Get just the new token's KV (last position)
+                        k_token = k_new[:, :, -1:, :]  # [1, H, 1, D]
+                        v_token = v_new[:, :, -1:, :]
+                        new_kv_per_layer.append((k_token, v_token))
+
+                # Update manager
                 if hasattr(out, 'hidden_states') and out.hidden_states:
                     manager_idlekv.on_token_generated(
-                        out.hidden_states[-1][:, -1, :], []
+                        out.hidden_states[-1][:, -1:, :],  # [1, 1, hidden_dim]
+                        new_kv_per_layer
                     )
+
+                current_kv = out.past_key_values
+                current_logits = out.logits[0, -1, :]  # For next iteration
+
+        idlekv_kv = current_kv
 
         # Run Phase 1 refinement
         result = manager_idlekv.idle_refine(idlekv_kv, max_time_ms=100)

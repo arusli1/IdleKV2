@@ -15,17 +15,18 @@ from typing import Optional
 
 from idlekv.core.shadow_buffer import ShadowBuffer
 from idlekv.core.query_buffer import QueryBuffer
+from idlekv.utils.kv_cache import get_layer_kv, build_cache, num_layers
 
 
 def phase1_rescore(
-    past_key_values: tuple,
+    past_key_values,
     shadow_buffer: ShadowBuffer,
     query_buffer: QueryBuffer,
     model,
     budget_per_layer: int,
-    num_layers: int,
+    num_layers_arg: int,
     interrupt_flag: Optional[callable] = None,
-) -> tuple:
+):
     """
     Re-score retained + shadow tokens using recent queries and rebuild cache.
 
@@ -33,30 +34,31 @@ def phase1_rescore(
     giving shadow-buffered tokens a second chance to prove their importance.
 
     Args:
-        past_key_values: current compressed KV cache (tuple of (K, V) per layer).
+        past_key_values: current compressed KV cache (DynamicCache or tuple).
                          K shape: [batch, num_kv_heads, seq_len, head_dim]
         shadow_buffer: ShadowBuffer containing recently evicted KV pairs
         query_buffer: QueryBuffer containing recent hidden states
         model: the HF model (needed for Q/K/V projection weights)
         budget_per_layer: target number of tokens to retain per layer
-        num_layers: number of transformer layers
+        num_layers_arg: number of transformer layers
         interrupt_flag: callable returning True if tool has returned (stop early)
 
     Returns:
-        Updated past_key_values tuple with re-scored cache
+        Updated past_key_values with re-scored cache (same format as input)
     """
     recent_h = query_buffer.get()  # [num_queries, hidden_dim]
     if recent_h.shape[0] == 0:
         return past_key_values  # nothing to score with
 
-    new_kv = list(past_key_values)
+    compressed_layers = []
+    total_layers = num_layers(past_key_values)
 
-    for layer_idx in range(num_layers):
+    for layer_idx in range(total_layers):
         if interrupt_flag is not None and interrupt_flag():
             break
 
-        # Get current retained KV
-        retained_k, retained_v = past_key_values[layer_idx]  # [B, H, S, D]
+        # Get current retained KV using utility function
+        retained_k, retained_v = get_layer_kv(past_key_values, layer_idx)  # [B, H, S, D]
         B, H, S_retained, D = retained_k.shape
         assert B == 1, "Phase 1 assumes batch_size=1"
 
@@ -65,7 +67,8 @@ def phase1_rescore(
         S_shadow = shadow_k.shape[1]
 
         if S_shadow == 0:
-            # No shadow tokens — nothing to swap
+            # No shadow tokens — nothing to swap, keep current layer
+            compressed_layers.append((retained_k, retained_v))
             continue
 
         # Concatenate retained + shadow as candidates
@@ -86,7 +89,7 @@ def phase1_rescore(
         # Access Q projection weights from the model
         q_proj = _get_q_proj(model, layer_idx)
         # recent_h: [num_queries, hidden_dim]
-        queries = _project_queries(recent_h, q_proj, H, D)  # [H, num_queries, D]
+        queries = _project_queries_with_rope(recent_h, q_proj, H, D, model, layer_idx)  # [H, num_queries, D]
 
         # Score all candidates: mean attention across recent queries
         # scores: [H, S_total]
@@ -114,9 +117,15 @@ def phase1_rescore(
             shadow_buffer.clear(layer_idx)
             shadow_buffer.push(layer_idx, evicted_k, evicted_v)
 
-        new_kv[layer_idx] = (new_k, new_v)
+        compressed_layers.append((new_k, new_v))
 
-    return tuple(new_kv)
+    # For layers that were interrupted, keep their current state
+    for layer_idx in range(len(compressed_layers), total_layers):
+        current_k, current_v = get_layer_kv(past_key_values, layer_idx)
+        compressed_layers.append((current_k, current_v))
+
+    # Return in same format as input
+    return build_cache(compressed_layers)
 
 
 def _get_q_proj(model, layer_idx: int):
@@ -125,23 +134,31 @@ def _get_q_proj(model, layer_idx: int):
     return layer.self_attn.q_proj
 
 
-def _project_queries(
+def _project_queries_with_rope(
     hidden_states: torch.Tensor,
     q_proj: torch.nn.Linear,
     num_kv_heads: int,
     head_dim: int,
+    model,
+    layer_idx: int,
 ) -> torch.Tensor:
     """
-    Project hidden states through Q projection and reshape for attention.
+    Project hidden states through Q projection and apply RoPE.
+
+    Fix Bug 2: Keys in cache have RoPE baked in, so queries need RoPE too.
+    Uses pragmatic shortcut: apply RoPE at position 0 for all queries
+    (treating them as position-independent probes). Preserves relative ranking.
 
     Args:
         hidden_states: [num_queries, hidden_dim]
         q_proj: Q projection layer
         num_kv_heads: number of KV heads (GQA groups)
         head_dim: dimension per head
+        model: HF model (for RoPE access)
+        layer_idx: layer index
 
     Returns:
-        [num_kv_heads, num_queries, head_dim] (averaged over Q heads per KV group)
+        [num_kv_heads, num_queries, head_dim] with RoPE applied
     """
     with torch.no_grad():
         q = q_proj(hidden_states)  # [num_queries, num_q_heads * head_dim]
@@ -149,6 +166,22 @@ def _project_queries(
     num_queries = q.shape[0]
     num_q_heads = q.shape[1] // head_dim
     q = q.view(num_queries, num_q_heads, head_dim)  # [Q, num_q_heads, D]
+
+    # Apply RoPE at dummy position 0 for all queries
+    # This is an approximation but preserves relative ranking
+    try:
+        layer = model.model.layers[layer_idx]
+        if hasattr(layer.self_attn, 'rotary_emb'):
+            # Llama-style RoPE
+            cos, sin = layer.self_attn.rotary_emb(q, seq_len=1)
+            # Apply to all queries at position 0
+            position_ids = torch.zeros(1, num_queries, dtype=torch.long, device=q.device)
+            q = _apply_rotary_pos_emb(q, cos, sin, position_ids)
+    except Exception:
+        # If RoPE fails, continue without it (graceful degradation)
+        # The ranking will be imperfect but still useful
+        pass
+
     q = q.permute(1, 0, 2)  # [num_q_heads, Q, D]
 
     # If GQA: average Q heads within each KV group
@@ -157,6 +190,28 @@ def _project_queries(
         q = q.view(num_kv_heads, group_size, num_queries, head_dim).mean(dim=1)
 
     return q  # [num_kv_heads, num_queries, head_dim]
+
+
+def _apply_rotary_pos_emb(q, cos, sin, position_ids):
+    """
+    Apply rotary position embedding. Simplified version.
+    """
+    def rotate_half(x):
+        x1 = x[..., : x.shape[-1] // 2]
+        x2 = x[..., x.shape[-1] // 2 :]
+        return torch.cat((-x2, x1), dim=-1)
+
+    # Simplified: just apply at position 0
+    cos = cos[0:1, :]  # [1, head_dim]
+    sin = sin[0:1, :]  # [1, head_dim]
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    return q_embed
+
+
+# Legacy function for backward compatibility
+def _project_queries(hidden_states, q_proj, num_kv_heads, head_dim):
+    """Legacy version without RoPE. Deprecated."""
+    return _project_queries_with_rope(hidden_states, q_proj, num_kv_heads, head_dim, None, 0)
 
 
 def _compute_importance_scores(

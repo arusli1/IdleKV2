@@ -11,6 +11,7 @@ as contiguous tensors for efficient batched attention scoring.
 
 import torch
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -107,7 +108,7 @@ class ShadowBuffer:
             return buf.keys[:, :0, :], buf.values[:, :0, :]
         return buf.keys[:, :buf.count, :].clone(), buf.values[:, :buf.count, :].clone()
 
-    def clear(self, layer_idx: int | None = None):
+    def clear(self, layer_idx: Optional[int] = None):
         """Clear buffer for a specific layer or all layers."""
         layers = [layer_idx] if layer_idx is not None else range(self.num_layers)
         for idx in layers:

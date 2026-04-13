@@ -6,7 +6,7 @@ from idlekv.core.shadow_buffer import ShadowBuffer
 
 
 def test_push_and_get():
-    buf = ShadowBuffer(num_layers=2, max_size=4, num_kv_heads=2, head_dim=8, device="cpu")
+    buf = ShadowBuffer(num_layers=2, max_size=4, num_kv_heads=2, head_dim=8, device="cpu", dtype=torch.float32)
 
     k = torch.randn(2, 3, 8)  # 3 evicted tokens
     v = torch.randn(2, 3, 8)
@@ -57,7 +57,7 @@ def test_clear():
 
 def test_overflow():
     """Push more tokens than max_size at once."""
-    buf = ShadowBuffer(num_layers=1, max_size=4, num_kv_heads=1, head_dim=4, device="cpu")
+    buf = ShadowBuffer(num_layers=1, max_size=4, num_kv_heads=1, head_dim=4, device="cpu", dtype=torch.float32)
     k = torch.randn(1, 10, 4)  # 10 > max_size=4
     v = torch.randn(1, 10, 4)
     buf.push(0, k, v)

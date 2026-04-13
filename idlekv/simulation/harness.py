@@ -12,11 +12,11 @@ import time
 import torch
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict, List, Union
 
 from idlekv.core.compression import CompressedKVManager
 from idlekv.core.scheduler import RefinementResult
-from idlekv.simulation.tool_distributions import sample_tool_duration
+from idlekv.utils.kv_cache import cache_size, get_layer_kv
 
 
 @dataclass
@@ -28,6 +28,170 @@ class SimulationConfig:
     duration_max_ms: float = 10000      # maximum idle duration
     max_gen_tokens: int = 512           # max tokens to generate total
     seed: int = 42
+
+
+@dataclass
+class SimulationResult:
+    """Results from an agentic simulation."""
+    total_tokens: int
+    total_time_ms: float
+    num_tool_calls: int
+    total_idle_time_ms: float
+    refinement_results: List[RefinementResult]
+    throughput_tokens_per_sec: float = field(init=False)
+
+    def __post_init__(self):
+        self.throughput_tokens_per_sec = (
+            self.total_tokens / (self.total_time_ms / 1000.0)
+            if self.total_time_ms > 0 else 0
+        )
+
+
+def sample_tool_duration(
+    median_ms: float,
+    min_ms: float,
+    max_ms: float,
+    rng: np.random.Generator
+) -> float:
+    """Sample tool call duration from log-normal distribution."""
+    # Log-normal distribution clipped to [min_ms, max_ms]
+    log_median = np.log(median_ms)
+    sigma = 0.5  # Standard deviation in log space
+
+    duration = rng.lognormal(log_median, sigma)
+    return np.clip(duration, min_ms, max_ms)
+
+
+def simulate_agentic_workload(
+    model,
+    tokenizer,
+    input_ids: torch.Tensor,
+    manager: Optional[CompressedKVManager] = None,
+    config: Optional[SimulationConfig] = None,
+    device: str = "cuda"
+) -> SimulationResult:
+    """
+    Simulate an agentic workload with tool-call pauses and IdleKV refinement.
+
+    Args:
+        model: HF model
+        tokenizer: HF tokenizer
+        input_ids: Initial context
+        manager: Optional CompressedKVManager for IdleKV
+        config: Simulation configuration
+        device: Device to use
+
+    Returns:
+        SimulationResult with metrics
+    """
+    if config is None:
+        config = SimulationConfig()
+
+    rng = np.random.default_rng(config.seed)
+    start_time = time.perf_counter()
+
+    # Initialize
+    if manager is not None:
+        past_key_values = manager.prefill(input_ids)
+    else:
+        past_key_values = None
+
+    current_input = input_ids
+    generated_tokens = 0
+    tool_calls = 0
+    total_idle_time = 0.0
+    refinement_results = []
+
+    print(f"    Simulating agentic workload (max {config.max_gen_tokens} tokens)...")
+
+    with torch.no_grad():
+        while generated_tokens < config.max_gen_tokens:
+            # Generate next batch of tokens until tool call
+            tokens_to_generate = min(
+                config.tool_call_interval,
+                config.max_gen_tokens - generated_tokens
+            )
+
+            if tokens_to_generate <= 0:
+                break
+
+            # Generate tokens
+            if past_key_values is not None:
+                # Use compressed cache
+                current_seq_len = cache_size(past_key_values, layer_idx=0)
+                position_ids = torch.arange(
+                    current_seq_len,
+                    current_seq_len + tokens_to_generate,
+                    device=device
+                ).unsqueeze(0)
+
+                output = model.generate(
+                    current_input[:, -1:] if generated_tokens > 0 else current_input,
+                    past_key_values=past_key_values,
+                    max_new_tokens=tokens_to_generate,
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                    use_cache=True
+                )
+            else:
+                # Full cache baseline
+                output = model.generate(
+                    current_input,
+                    max_new_tokens=tokens_to_generate,
+                    do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                    use_cache=True
+                )
+
+            # Update state
+            generated_tokens += tokens_to_generate
+            current_input = output
+
+            # Simulate tool call pause
+            if generated_tokens < config.max_gen_tokens:
+                tool_calls += 1
+
+                # Sample idle duration
+                idle_duration = sample_tool_duration(
+                    config.duration_median_ms,
+                    config.duration_min_ms,
+                    config.duration_max_ms,
+                    rng
+                )
+                total_idle_time += idle_duration
+
+                # Run IdleKV refinement if available
+                if manager is not None:
+                    # Simulate token generation for query buffer
+                    # (In real scenario, this would come from normal generation)
+                    dummy_hidden = torch.randn(
+                        1, manager.hidden_dim, device=device, dtype=manager.dtype
+                    )
+                    manager.query_buffer.append(dummy_hidden.squeeze(0))
+
+                    # Run refinement
+                    refinement = manager.idle_refine(
+                        past_key_values,
+                        max_time_ms=idle_duration
+                    )
+                    past_key_values = refinement.past_key_values
+                    refinement_results.append(refinement)
+
+                # Simulate idle time (for timing purposes)
+                time.sleep(idle_duration / 1000.0 * 0.1)  # Scale down for testing
+
+    total_time = (time.perf_counter() - start_time) * 1000.0  # Convert to ms
+
+    print(f"      Generated {generated_tokens} tokens, {tool_calls} tool calls")
+    print(f"      Total idle time: {total_idle_time:.1f}ms")
+
+    return SimulationResult(
+        total_tokens=generated_tokens,
+        total_time_ms=total_time,
+        num_tool_calls=tool_calls,
+        total_idle_time_ms=total_idle_time,
+        refinement_results=refinement_results
+    )
 
 
 @dataclass

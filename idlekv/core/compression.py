@@ -12,8 +12,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from idlekv.core.shadow_buffer import ShadowBuffer
 from idlekv.core.query_buffer import QueryBuffer
-from idlekv.core.phase2_refresh import CPUKVStore
+from idlekv.core.phase2_refresh import FullKVStore
 from idlekv.core.scheduler import IdleScheduler, RefinementResult
+from idlekv.utils.kv_cache import get_layer_kv, set_layer_kv, num_layers
 
 
 class CompressedKVManager:
@@ -42,18 +43,24 @@ class CompressedKVManager:
         compression_ratio: float = 0.5,
         shadow_size: int = 256,
         query_buffer_size: int = 32,
+        offload_full_kv: bool = False,
     ):
         self.model = model
         self.compression_ratio = compression_ratio
         config = model.config
+
+        # Fix Bug 4: Enable hidden states output
+        model.config.output_hidden_states = True
 
         # Model architecture params
         self.num_layers = config.num_hidden_layers
         self.num_kv_heads = getattr(config, 'num_key_value_heads', config.num_attention_heads)
         self.head_dim = config.hidden_size // config.num_attention_heads
         self.hidden_dim = config.hidden_size
-        self.device = next(model.parameters()).device
-        self.dtype = next(model.parameters()).dtype
+        param = next(model.parameters())
+        self.device = param.device
+        self.dtype = param.dtype
+        self.offload_full_kv = offload_full_kv
 
         # Initialize components
         self.shadow_buffer = ShadowBuffer(
@@ -70,28 +77,30 @@ class CompressedKVManager:
             device=self.device,
             dtype=self.dtype,
         )
-        self.cpu_kv_store = CPUKVStore()
+        self.full_kv_store = FullKVStore(offload_to_cpu=offload_full_kv)
         self.budget_per_layer = 0  # set during prefill
-        self.generated_kv: list = []  # KV pairs for tokens generated since prefill
 
-    def prefill(self, input_ids: torch.Tensor) -> tuple:
+        # Fix Bug 3: Use list of lists to avoid O(n^2) torch.cat
+        self.generated_kv_lists: list = []  # list of lists of (k, v) per layer
+
+    def prefill(self, input_ids: torch.Tensor):
         """
-        Run prefill: full forward pass, store full KV on CPU, then compress.
+        Run prefill: full forward pass, store full KV, then compress.
 
         Args:
             input_ids: [1, seq_len]
 
         Returns:
-            Compressed past_key_values tuple
+            Compressed past_key_values (DynamicCache or tuple format)
         """
         with torch.no_grad():
-            outputs = self.model(input_ids, use_cache=True)
+            outputs = self.model(input_ids, use_cache=True, output_hidden_states=True)
 
         full_kv = outputs.past_key_values
         seq_len = input_ids.shape[1]
 
-        # Store full KV on CPU before compression
-        self.cpu_kv_store.store(full_kv)
+        # Store full KV (CPU or GPU based on config)
+        self.full_kv_store.store(full_kv)
 
         # Compute budget
         self.budget_per_layer = int(seq_len * (1 - self.compression_ratio))
@@ -102,21 +111,17 @@ class CompressedKVManager:
         # Reset buffers for new session
         self.shadow_buffer.clear()
         self.query_buffer.clear()
-        self.generated_kv = [(
-            torch.empty(1, self.num_kv_heads, 0, self.head_dim,
-                        device=self.device, dtype=self.dtype),
-            torch.empty(1, self.num_kv_heads, 0, self.head_dim,
-                        device=self.device, dtype=self.dtype),
-        ) for _ in range(self.num_layers)]
+        # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
+        self.generated_kv_lists = [[] for _ in range(self.num_layers)]
 
         return compressed_kv
 
     def _compress(
         self,
-        full_kv: tuple,
+        full_kv,
         input_ids: torch.Tensor,
         budget: int,
-    ) -> tuple:
+    ):
         """
         SnapKV-style compression: use last-window queries to score all keys,
         keep top-k, push evicted to shadow buffer.
@@ -125,11 +130,14 @@ class CompressedKVManager:
         kvpress is used only for baselines.
         """
         import math
+        from idlekv.utils.kv_cache import build_cache
+
         compressed = []
         window_size = 32  # SnapKV observation window
+        layers_count = num_layers(full_kv)
 
-        for layer_idx in range(self.num_layers):
-            k, v = full_kv[layer_idx]  # [1, H, S, D]
+        for layer_idx in range(layers_count):
+            k, v = get_layer_kv(full_kv, layer_idx)  # [1, H, S, D]
             S = k.shape[2]
 
             if S <= budget:
@@ -189,7 +197,8 @@ class CompressedKVManager:
 
             compressed.append((compressed_k, compressed_v))
 
-        return tuple(compressed)
+        # Return cache in same format as input
+        return build_cache(compressed)
 
     def on_token_generated(self, hidden_state: torch.Tensor, new_kv_per_layer: list):
         """
@@ -202,17 +211,36 @@ class CompressedKVManager:
         """
         self.query_buffer.append(hidden_state.squeeze(0))
 
-        # Append generated token's KV to tracking list
+        # Fix Bug 3: Store in list to avoid O(n^2) torch.cat every step
         for layer_idx, (k, v) in enumerate(new_kv_per_layer):
-            old_k, old_v = self.generated_kv[layer_idx]
-            self.generated_kv[layer_idx] = (
-                torch.cat([old_k, k], dim=2),
-                torch.cat([old_v, v], dim=2),
-            )
+            self.generated_kv_lists[layer_idx].append((k, v))
+
+    def _get_generated_kv(self) -> list:
+        """
+        Concatenate generated KV lists into tensors when needed.
+        Only called during refinement, not every token.
+        """
+        generated_kv = []
+        for layer_idx in range(self.num_layers):
+            if not self.generated_kv_lists[layer_idx]:
+                # No generated tokens for this layer
+                generated_kv.append((
+                    torch.empty(1, self.num_kv_heads, 0, self.head_dim,
+                                device=self.device, dtype=self.dtype),
+                    torch.empty(1, self.num_kv_heads, 0, self.head_dim,
+                                device=self.device, dtype=self.dtype),
+                ))
+            else:
+                # Concatenate all generated tokens for this layer
+                k_list, v_list = zip(*self.generated_kv_lists[layer_idx])
+                k_cat = torch.cat(k_list, dim=2)  # [1, H, num_generated, D]
+                v_cat = torch.cat(v_list, dim=2)
+                generated_kv.append((k_cat, v_cat))
+        return generated_kv
 
     def idle_refine(
         self,
-        past_key_values: tuple,
+        past_key_values,
         max_time_ms: float = 1000,
     ) -> RefinementResult:
         """
@@ -228,26 +256,22 @@ class CompressedKVManager:
         scheduler = IdleScheduler(
             shadow_buffer=self.shadow_buffer,
             query_buffer=self.query_buffer,
-            cpu_kv_store=self.cpu_kv_store,
+            full_kv_store=self.full_kv_store,
             model=self.model,
             budget_per_layer=self.budget_per_layer,
             num_layers=self.num_layers,
         )
         return scheduler.run(
             past_key_values=past_key_values,
-            generated_kv=self.generated_kv,
+            generated_kv=self._get_generated_kv(),
             max_time_ms=max_time_ms,
         )
 
-    def on_tool_result_prefill(self, full_kv: tuple):
+    def on_tool_result_prefill(self, full_kv):
         """
-        Update CPU KV store after processing tool results.
+        Update full KV store after processing tool results.
         Called after the model prefills tool-result tokens.
         """
-        self.cpu_kv_store.store(full_kv)
-        self.generated_kv = [(
-            torch.empty(1, self.num_kv_heads, 0, self.head_dim,
-                        device=self.device, dtype=self.dtype),
-            torch.empty(1, self.num_kv_heads, 0, self.head_dim,
-                        device=self.device, dtype=self.dtype),
-        ) for _ in range(self.num_layers)]
+        self.full_kv_store.store(full_kv)
+        # Reset generated KV tracking
+        self.generated_kv_lists = [[] for _ in range(self.num_layers)]
