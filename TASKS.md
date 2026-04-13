@@ -2,17 +2,11 @@
 
 **✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (21/21 tests passing).
 
-Remaining tasks organized by priority. Complete in order within each section.
+**📋 Prerequisites**: Complete `SETUP.md` first - A100 environment ready, models downloaded, HF authenticated.
 
-## 🔧 A100 Setup & Verification (~30 min)
+---
 
-| Task | Files | Runtime | Exit Criteria |
-|------|-------|---------|---------------|
-| **Environment setup** | `SETUP.md` | ~5 min | `nvidia-smi` shows A100, `make test` passes |
-| **Model download + HF auth** | — | ~15 min | Llama-3.1-8B + Qwen2.5-7B cached via HF |
-| **Baseline verification** | `idlekv/eval/` | ~10 min | kvpress SnapKV + LongBench run end-to-end |
-
-## 🧪 Pre-Experiment Validation (~20 min)
+## 🧪 Validation (~20 min)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
