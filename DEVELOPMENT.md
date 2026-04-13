@@ -66,7 +66,7 @@ Day-by-day implementation plan mapped to the codebase. Each day lists what to bu
 | Implement CPU KV store | `idlekv/core/phase2_refresh.py` → `CPUKVStore` | After prefill, `cpu_kv_store.memory_bytes` is ~512MB |
 | Implement Phase 2 refresh | `idlekv/core/phase2_refresh.py` → `phase2_refresh()` | Refreshing 8 layers changes the compressed cache (different token indices) |
 | Wire into scheduler | `idlekv/core/scheduler.py` | `IdleScheduler.run(max_time_ms=2000)` runs Phase 1 then Phase 2 |
-| Measure per-layer timing | — | Print time per layer. Should be ~15-40ms on L40S/RTX6000. |
+| Measure per-layer timing | — | Print time per layer. Should be ~15-40ms on A100. |
 
 **Implementation notes:**
 - CPU→GPU transfer: use `tensor.to(device, non_blocking=True)` followed by `torch.cuda.synchronize()`. The `non_blocking` overlaps transfer with any remaining GPU work.

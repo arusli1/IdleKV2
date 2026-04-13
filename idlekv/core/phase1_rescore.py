@@ -6,7 +6,7 @@ shadow buffer), re-rank all candidates and select the top-k to form the new
 compressed cache. Tokens in the shadow buffer that are now more important than
 the least-important retained tokens get swapped in.
 
-Cost: ~15-70ms on RTX 6000 / L40S for Llama-3.1-8B at 4K context.
+Cost: ~15-70ms on A100 for Llama-3.1-8B at 4K context.
 """
 
 import torch

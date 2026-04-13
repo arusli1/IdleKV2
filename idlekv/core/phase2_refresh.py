@@ -5,7 +5,7 @@ Loads the full prefill KV from CPU layer-by-layer, computes full attention
 scores with recent queries, and re-selects top-k tokens for the compressed
 cache. Processes shallow layers first (they propagate errors most severely).
 
-Cost: ~15-40ms per layer on RTX 6000 / L40S. All 32 layers: ~500ms-1.3s.
+Cost: ~15-40ms per layer on A100. All 32 layers: ~500ms-1.3s.
 Anytime: each layer is independent; interruption yields a valid partial state.
 """
 

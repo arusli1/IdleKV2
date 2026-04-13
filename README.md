@@ -12,7 +12,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-### GPU Experiments (RTX 6000 96GB)
+### GPU Experiments (A100 80GB)
 ```bash
 # On GPU machine
 git pull
@@ -83,8 +83,8 @@ IdleKV/
 
 ## Hardware Note
 
-**Target hardware:** Single NVIDIA RTX PRO 6000 Blackwell (96GB GDDR7, 1792 GB/s bandwidth)
+**Target hardware:** Single NVIDIA A100 (80GB HBM2e, 1935 GB/s bandwidth)
 
-With 96GB VRAM, full uncompressed KV caches (4K-8K context) easily fit on GPU alongside model weights. IdleKV keeps full prefill KV on GPU by default, eliminating CPU-GPU transfers during Phase 2 refresh.
+With 80GB VRAM, full uncompressed KV caches (4K-8K context) easily fit on GPU alongside model weights. IdleKV keeps full prefill KV on GPU by default, eliminating CPU-GPU transfers during Phase 2 refresh.
 
 For smaller GPUs, set `offload_full_kv: true` in config to fall back to CPU storage.
