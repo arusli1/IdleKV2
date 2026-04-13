@@ -1,6 +1,6 @@
-# Development Task List
+# IdleKV Task List
 
-Implementation tasks organized by priority and dependencies. Complete tasks in order within each section, but sections can be worked on flexibly based on available time.
+Implementation and experiment tasks organized by priority and dependencies. Complete tasks in order within each section, but sections can be worked on flexibly based on available time.
 
 ## 🔧 Setup & Infrastructure (~30 min)
 
@@ -30,24 +30,24 @@ Implementation tasks organized by priority and dependencies. Complete tasks in o
 | **GQA compatibility** | Test scripts | ~10 min | Works on both Llama (32→8) and Qwen (28→4) heads |
 | **Performance verification** | — | ~10 min | Phase 1: ~15-70ms, Phase 2: ~500ms-1.3s total |
 
-## 🧪 Experiments (~4-8 hours)
+## 🧪 Experiments (~20-40 hours total - multi-day runs)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
-| **Baseline comparison** | `scripts/run_experiments.py` | ~2-3 hours | 7 baselines × 2 models × 2 benchmarks × 3 seeds |
-| **IdleKV sweep** | `scripts/run_experiments.py` | ~1-2 hours | 7 idle budgets × core configs |
-| **Throughput measurement** | `idlekv/eval/metrics.py` | ~30 min | IdleKV tok/s ≈ SnapKV tok/s (±2%) |
-| **Wall-clock timing** | `idlekv/simulation/harness.py` | ~30 min | IdleKV ≤ SnapKV on 50-turn traces |
+| **Full baseline suite** | `scripts/run_experiments.py` | ~15-25 hours | 7 baselines × 2 models × 2 benchmarks × 3 seeds (~168 runs) |
+| **IdleKV budget sweep** | `scripts/run_experiments.py` | ~8-15 hours | 7 budgets × 3 phases × core configs (~504 runs) |
+| **Throughput measurement** | `idlekv/eval/metrics.py` | ~1 hour | IdleKV tok/s ≈ SnapKV tok/s (±2%) |
+| **Wall-clock timing** | `idlekv/simulation/harness.py` | ~1 hour | IdleKV ≤ SnapKV on 50-turn traces |
 
-## 📊 Analysis & Ablations (~1-2 hours)
+## 📊 Analysis & Ablations (~4-8 hours)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
-| **Shadow buffer ablation** | — | ~20 min | 5 buffer sizes × RULER r=0.5 |
-| **Compression ratio sweep** | — | ~30 min | r=0.3/0.5/0.7 × IdleKV × RULER |
-| **Phase comparison** | — | ~30 min | Phase 1 vs 2 vs both × 2 models |
-| **Figure generation** | `scripts/plot_figures.py` | ~10 min | All PDFs in `figures/` directory |
-| **Per-subtask analysis** | — | ~20 min | 13-subtask RULER breakdown heatmap |
+| **Shadow buffer ablation** | — | ~2-3 hours | 5 buffer sizes × RULER r=0.5 × multiple seeds |
+| **Compression ratio sweep** | — | ~2-3 hours | r=0.3/0.5/0.7 × IdleKV × RULER × multiple seeds |
+| **Phase comparison** | — | ~2-3 hours | Phase 1 vs 2 vs both × 2 models × benchmarks |
+| **Figure generation** | `scripts/plot_figures.py` | ~15 min | All PDFs in `figures/` directory |
+| **Per-subtask analysis** | — | ~30 min | 13-subtask RULER breakdown heatmap |
 
 ## 📝 Paper Tasks (~3-5 days)
 
