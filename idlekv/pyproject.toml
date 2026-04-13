@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "idlekv"
+version = "0.1.0"
+description = "KV cache quality recovery during agentic idle time"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "transformers>=4.40",
+    "accelerate",
+    "kvpress",
+    "datasets",
+    "pyyaml",
+    "tqdm",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ipykernel",
+    "black",
+    "ruff",
+]
+flash = [
+    "flash-attn",
+]

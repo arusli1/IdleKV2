@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Results (tracked separately or via DVC)
+results/
+*.json
+!configs/*.yaml
+
+# Models and data (too large for git)
+models/
+data/
+*.bin
+*.safetensors
+
+# Environment
+.venv/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/*.ipynb
+!notebooks/.gitkeep
+
+# System
+.DS_Store
+Thumbs.db
+
+# CUDA
+*.ptx
+*.cubin
