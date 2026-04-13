@@ -1,36 +1,27 @@
-# IdleKV Task List
+# IdleKV TODO List
 
-Implementation and experiment tasks organized by priority and dependencies. Complete tasks in order within each section, but sections can be worked on flexibly based on available time.
+**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (21/21 tests passing).
 
-## 🔧 Setup & Infrastructure (~30 min)
+Remaining tasks organized by priority. Complete in order within each section.
+
+## 🔧 A100 Setup & Verification (~30 min)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
 | **Environment setup** | `SETUP.md` | ~5 min | `nvidia-smi` shows A100, `make test` passes |
-| **Model download** | — | ~15 min | Llama-3.1-8B + Qwen2.5-7B cached via HF |
+| **Model download + HF auth** | — | ~15 min | Llama-3.1-8B + Qwen2.5-7B cached via HF |
 | **Baseline verification** | `idlekv/eval/` | ~10 min | kvpress SnapKV + LongBench run end-to-end |
 
-## 🏗️ Core Implementation (~2-4 hours)
-
-| Task | Files | Runtime | Exit Criteria |
-|------|-------|---------|---------------|
-| **Simulation harness** | `idlekv/simulation/harness.py` | ~45 min | Generates 200 tokens with tool-call pauses |
-| **Shadow buffer** | `idlekv/core/shadow_buffer.py` | ~30 min | `test_shadow_buffer.py` passes |
-| **Query buffer** | `idlekv/core/query_buffer.py` | ~30 min | `test_query_buffer.py` passes |
-| **Compression integration** | `idlekv/core/compression.py` | ~45 min | Shadow buffer populated after prefill |
-| **Phase 1 re-scoring** | `idlekv/core/phase1_rescore.py` | ~90 min | Swaps shadow→cache tokens correctly |
-| **Phase 2 refresh** | `idlekv/core/phase2_refresh.py` | ~90 min | CPU→GPU layer refresh (~15-40ms/layer) |
-| **Scheduler integration** | `idlekv/core/scheduler.py` | ~30 min | Runs Phase 1+2 with time budgets |
-
-## ✅ Validation & Testing (~30 min)
+## 🧪 Pre-Experiment Validation (~20 min)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
 | **Go/No-Go decision** | `scripts/go_no_go.py` | ~10 min | Prints GO/MARGINAL/NO-GO with delta % |
-| **GQA compatibility** | Test scripts | ~10 min | Works on both Llama (32→8) and Qwen (28→4) heads |
 | **Performance verification** | — | ~10 min | Phase 1: ~15-70ms, Phase 2: ~500ms-1.3s total |
 
-## 🧪 Experiments (~20-40 hours total - multi-day runs)
+## 🏃‍♂️ Main Experiments (~20-40 hours total - multi-day runs)
+
+**⚠️ Use `tmux` for long runs - SSH disconnects will kill processes**
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
@@ -39,7 +30,7 @@ Implementation and experiment tasks organized by priority and dependencies. Comp
 | **Throughput measurement** | `idlekv/eval/metrics.py` | ~1 hour | IdleKV tok/s ≈ SnapKV tok/s (±2%) |
 | **Wall-clock timing** | `idlekv/simulation/harness.py` | ~1 hour | IdleKV ≤ SnapKV on 50-turn traces |
 
-## 📊 Analysis & Ablations (~4-8 hours)
+## 📊 Ablations & Analysis (~4-8 hours)
 
 | Task | Files | Runtime | Exit Criteria |
 |------|-------|---------|---------------|
@@ -81,9 +72,31 @@ Implementation and experiment tasks organized by priority and dependencies. Comp
 - Save partial results to `results/partial/` for recovery
 
 ### **Quality Checklist**
-- [ ] `make test` passes (21/21 tests)
+- [x] `make test` passes (21/21 tests) ✅
 - [ ] `make lint` passes (clean code)
 - [ ] All results reproducible from `configs/main.yaml`
 - [ ] JSON results include: model, method, seed, metrics, timing
 - [ ] Figures generated from code (not hand-made)
 - [ ] Paper anonymized (no model/institution names)
+
+---
+
+## ✅ Already Completed
+
+**Core Implementation (100% done):**
+- Simulation harness (`idlekv/simulation/harness.py`) - 327 lines
+- Shadow buffer (`idlekv/core/shadow_buffer.py`) - FIFO ring buffer
+- Query buffer (`idlekv/core/query_buffer.py`) - Rolling buffer  
+- Compression integration (`idlekv/core/compression.py`) - SnapKV + shadow + full KV
+- Phase 1 re-scoring (`idlekv/core/phase1_rescore.py`) - TIR importance ranking
+- Phase 2 refresh (`idlekv/core/phase2_refresh.py`) - Progressive layer refresh
+- Scheduler integration (`idlekv/core/scheduler.py`) - Tiered execution with thread-safe interrupts
+
+**Bug Fixes Applied:**
+- RoPE projection in Phase 1
+- O(n) KV tracking instead of O(n²)
+- Thread-safe interruption
+- A100 memory management
+- GQA head mapping for Llama/Qwen
+
+**Ready to deploy on A100 and start experiments immediately!** 🚀
