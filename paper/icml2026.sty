@@ -1,0 +1,93 @@
+% ICML 2026 Style File
+\ProvidesPackage{icml2026}[2026/01/01 ICML 2026 Style File]
+
+% Basic packages
+\RequirePackage{amsmath,amssymb,amsfonts}
+\RequirePackage{algorithm}
+\RequirePackage{algorithmic}
+\RequirePackage{booktabs}
+\RequirePackage{url}
+\RequirePackage{graphicx}
+\RequirePackage[authoryear]{natbib}
+
+% Page setup for ICML two column format
+\RequirePackage[letterpaper,
+  textwidth=6.75in,
+  textheight=9.0in,
+  left=0.75in,
+  top=1.0in,
+  columnsep=0.25in]{geometry}
+
+% Title and author commands
+\def\icmltitle#1{\gdef\@icmltitle{#1}\title{#1}}
+\def\icmltitlerunning#1{\gdef\@icmltitlerunning{#1}}
+
+% Author list commands (for double-blind, these will be ignored)
+\def\icmlsetsymbol#1#2{}
+\newenvironment{icmlauthorlist}{}{}
+\def\icmlauthor#1#2{}
+\def\icmlaffiliation#1#2{}
+\def\icmlcorrespondingauthor#1#2{}
+\def\icmlequal{*}
+
+% Print affiliations (empty for double-blind)
+\def\printAffiliationsAndNotice{}
+
+% Redefine maketitle for ICML double-blind format
+\renewcommand{\maketitle}{%
+  \twocolumn[%
+    \begin{center}
+      % Title with rules above and below
+      \rule{\textwidth}{1pt}
+      \vskip 1pt
+      {\fontsize{14}{16}\selectfont\bfseries\@icmltitle\par}
+      \vskip 1pt
+      \rule{\textwidth}{1pt}
+      \vskip 0.3in
+      % Author information for double-blind
+      {\fontsize{10}{12}\selectfont\bfseries Anonymous Authors\textsuperscript{1}\par}
+      \vskip 0.4in
+    \end{center}
+  ]%
+  % Footnote with affiliation and preliminary work notice
+  \footnotetext[1]{Anonymous Institution, Anonymous City, Anonymous Region, Anonymous Country. Correspondence to: Anonymous Author $\langle$anon@domain.com$\rangle$.\par Preliminary work. Under review by the International Conference on Machine Learning (ICML). Do not distribute.}
+}
+
+% Section formatting (ICML standard)
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+  {-18pt \@plus -6pt \@minus -1pt}%
+  {9pt \@plus 1pt}%
+  {\normalfont\fontsize{11}{13}\bfseries}}
+
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}%
+  {-14.4pt \@plus -6pt \@minus -1pt}%
+  {7.8pt \@plus 1pt}%
+  {\normalfont\fontsize{10}{12}\bfseries}}
+
+% Basic formatting (ICML standard)
+\setlength{\columnsep}{0.25in}
+\setlength{\parindent}{0pt}  % No paragraph indentation per ICML
+\RequirePackage{times}        % Times font
+\fontsize{10}{11}\selectfont  % 10pt font with 11pt line spacing
+
+% Abstract environment (ICML standard formatting)
+\renewenvironment{abstract}{%
+  \vskip 0.4in
+  \begin{center}%
+    {\fontsize{11}{13}\selectfont\bfseries Abstract}%
+  \end{center}%
+  \vskip 0.1in
+  \begin{quotation}
+    \fontsize{10}{11}\selectfont
+    \leftskip 0.25in \rightskip 0.25in
+}{%
+  \end{quotation}
+  \vskip 0.4in
+}
+
+% Figure and table caption formatting
+\RequirePackage{caption}
+\captionsetup[figure]{font=scriptsize,labelfont=bf,skip=6pt}
+\captionsetup[table]{font=scriptsize,labelfont=bf,skip=6pt,position=top}
+
+\endinput
