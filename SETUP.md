@@ -160,10 +160,25 @@ The main configuration is in `configs/main.yaml`. Key settings for A10G:
 hardware: a10g_24gb
 compression:
   offload_full_kv: true  # Store full KV on CPU for 24GB setup
+evaluation:
+  ruler:
+    context_lengths: [4096]  # A10G nightly default
 models:
   - meta-llama/Llama-3.1-8B-Instruct  
   - Qwen/Qwen2.5-7B-Instruct
 ```
+
+The default nightly matrix intentionally excludes the `sync_refresh` baseline on
+single-A10G runs. The baseline remains implemented, but its clean isolated `4K`
+path still OOMs on this hardware, so it should be treated as follow-up work
+after Phase 2 memory optimization or on a larger-memory GPU.
+
+The default single-A10G matrix also separates the broad baseline readout from
+the heavier IdleKV readout:
+- baselines run on `RULER 4K` plus `LongBench`
+- IdleKV and ablations default to `RULER 4K` at `r=0.7`
+- `LongBench + IdleKV` is follow-up work until decode-time cache growth is
+  optimized beyond the current HF `DynamicCache` concat path
 
 ### 5.2 Run Experiments
 ```bash
@@ -178,6 +193,22 @@ python scripts/run_experiments.py \
 
 # Dry run (see what will be executed)
 make dry-run
+
+# Explicit 8K follow-up run (not the default A10G nightly path)
+python scripts/run_experiments.py \
+    --config configs/main.yaml \
+    --model llama8b \
+    --seed 42 \
+    --benchmarks ruler \
+    --ruler-context-lengths 4096,8192
+
+# Explicit LongBench + IdleKV follow-up probe after decode-memory work lands
+python scripts/run_experiments.py \
+    --config configs/main.yaml \
+    --only-idlekv \
+    --model llama8b \
+    --benchmarks longbench \
+    --longbench-max-input-length 3840
 ```
 
 ### 5.3 Monitor Progress
@@ -275,6 +306,13 @@ chmod -R 755 ~/.cache/huggingface/
 - **Full experiment suite**: 4-12 hours
 - **Phase 1 refinement**: target sub-100ms
 - **Phase 2 per layer**: hardware-dependent; verify on your local prompt mix
+- **Default nightly scope**: baselines on `RULER 4K` + `LongBench`; IdleKV and
+  ablations on `RULER 4K` at `r=0.7`
+- **Default nightly RULER context**: `4K`
+- **8K status**: clean isolated IdleKV still OOMs on this A10G path; treat as
+  follow-up, not default
+- **LongBench + IdleKV status**: follow-up on this A10G path until decode
+  cache growth is optimized
 
 ### Throughput Targets
 - **Absolute tok/s**: depends on model, prompt length, and PCIe overhead on A10G
@@ -289,6 +327,12 @@ python scripts/run_experiments.py --config configs/main.yaml --model llama8b --s
 
 # Test only IdleKV variations
 python scripts/run_experiments.py --config configs/main.yaml --model llama8b --only-idlekv
+
+# Test explicit 8K follow-up path
+python scripts/run_experiments.py --config configs/main.yaml --model llama8b --only-idlekv --benchmarks ruler --ruler-context-lengths 8192
+
+# Test explicit LongBench + IdleKV follow-up path
+python scripts/run_experiments.py --config configs/main.yaml --model llama8b --only-idlekv --benchmarks longbench --longbench-max-input-length 3840
 ```
 
 ### Production Runs
@@ -320,6 +364,8 @@ python -u scripts/go_no_go.py --model meta-llama/Llama-3.1-8B-Instruct --num-tri
 **"CUDA out of memory"**  
 - Set `offload_full_kv: true` in config
 - Check `nvidia-smi` for memory usage
+- On a single A10G, keep the default `4K` RULER setting unless you are
+  explicitly probing the 8K or `LongBench + IdleKV` follow-up paths
 
 **"No module named 'flash_attn'"**
 - This is optional - experiments will run without it

@@ -356,9 +356,14 @@ throughput; Baseline~6 isolates whether idle-time scheduling---not the
 underlying operations---drives the gains.
 
 \textbf{Benchmarks and metrics.}
-We evaluate on RULER (13 subtasks, 4K and 8K context) and LongBench (16
-subtasks), reporting RULER accuracy, LongBench average score, KL divergence
-vs.\ full cache, and decode throughput (tokens/sec).
+The primary single-A10G study centers on RULER at 4K context, which is the
+stable on-host operating point for full baseline and IdleKV comparisons.
+We also use the delayed-query pilot as a mechanism check and run auxiliary
+LongBench baseline slices on the same hardware. LongBench with IdleKV and 8K
+RULER remain scale-up follow-up experiments after decode-memory optimization
+or migration to larger-memory GPUs. We report RULER accuracy, LongBench
+average score, KL divergence vs.\ full cache, and decode throughput
+(tokens/sec).
 
 % ---------------------------------------------------------------
 %  4. Results

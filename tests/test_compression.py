@@ -274,10 +274,34 @@ def test_online_eviction_bounds_cache():
                                               manager.head_dim)], dim=2)
             past_kv = set_layer_kv(past_kv, l, new_k, new_v)
 
-    past_kv = manager.maybe_evict_online(past_kv)
+    past_kv = manager.maybe_evict_online(past_kv, slack_tokens=0)
     for l in range(manager.num_layers):
         k, _ = get_layer_kv(past_kv, l)
         assert k.shape[2] == budget, f"layer {l}: {k.shape[2]} != budget {budget}"
+
+
+def test_online_eviction_slack_delays_rebuild():
+    """A small slack window avoids rebuilding the cache on every decode step."""
+    model = create_mock_model()
+    manager = CompressedKVManager(model=model, compression_ratio=0.5, shadow_size=128)
+    seq_len = 20
+    input_ids = torch.randint(0, 1000, (1, seq_len))
+    mock_outputs = create_mock_outputs(seq_len=seq_len)
+    model.return_value = mock_outputs
+    past_kv = manager.prefill(input_ids)
+    budget = manager.budget_per_layer
+
+    from idlekv.utils.kv_cache import get_layer_kv, set_layer_kv
+    for l in range(manager.num_layers):
+        k, v = get_layer_kv(past_kv, l)
+        new_k = torch.cat([k, torch.randn(1, manager.num_kv_heads, 1, manager.head_dim)], dim=2)
+        new_v = torch.cat([v, torch.randn(1, manager.num_kv_heads, 1, manager.head_dim)], dim=2)
+        past_kv = set_layer_kv(past_kv, l, new_k, new_v)
+
+    past_kv = manager.maybe_evict_online(past_kv, slack_tokens=4)
+    for l in range(manager.num_layers):
+        k, _ = get_layer_kv(past_kv, l)
+        assert k.shape[2] == budget + 1
 
 
 if __name__ == "__main__":

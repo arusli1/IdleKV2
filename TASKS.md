@@ -1,6 +1,6 @@
 # IdleKV TODO List
 
-**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (26/26 tests passing).
+**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`41 passed`).
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
@@ -15,15 +15,21 @@
 | **Performance verification** | —                     | ~10 min | Phase 1: target <100ms, Phase 2: verify locally on A10G |
 
 
-## 🏃‍♂️ Main Experiments (~20-40 hours total - multi-day runs)
+## 🏃‍♂️ Main Experiments (~12-30 hours total - multi-day runs)
 
 **⚠️ Use `tmux` for long runs - SSH disconnects will kill processes**
 
+**Verified A10G nightly default**
+- baselines on `RULER 4K` + `LongBench`
+- IdleKV and ablations on `RULER 4K` at `r=0.7`
+- `sync_refresh` excluded from the default matrix because its clean isolated `4K` path still OOMs
+- `8K` RULER kept as explicit follow-up work, not default
+- `LongBench + IdleKV` kept as explicit follow-up work until decode-cache growth is optimized
 
 | Task                       | Files                          | Runtime      | Exit Criteria                                               |
 | -------------------------- | ------------------------------ | ------------ | ----------------------------------------------------------- |
-| **Full baseline suite**    | `scripts/run_experiments.py`   | ~15-25 hours | 7 baselines × 2 models × 2 benchmarks × 3 seeds (~168 runs) |
-| **IdleKV budget sweep**    | `scripts/run_experiments.py`   | ~8-15 hours  | 7 budgets × 3 phases × core configs (~504 runs)             |
+| **Full baseline suite**    | `scripts/run_experiments.py`   | ~10-18 hours | 7 default baselines × 2 models × 2 benchmarks × 3 seeds |
+| **IdleKV budget sweep**    | `scripts/run_experiments.py`   | ~6-12 hours  | 7 budgets × 3 phases × core configs on `RULER 4K`             |
 | **Throughput measurement** | `idlekv/eval/metrics.py`       | ~1 hour      | IdleKV tok/s ≈ SnapKV tok/s (±2%)                           |
 | **Wall-clock timing**      | `idlekv/simulation/harness.py` | ~1 hour      | IdleKV ≤ SnapKV on 50-turn traces                           |
 
@@ -69,6 +75,8 @@
 - **Phase 2**: Tens of ms per layer plus CPU offload overhead; verify on-host
 - **Throughput**: Match SnapKV decode speed within a few percent
 - **Wall-clock**: ≤ SnapKV on realistic agentic traces
+- **Macro note**: workshop-scale evidence should center on the stable A10G
+  matrix first; LongBench+IdleKV and 8K runs are scale-up follow-up work
 
 ### **Long-Running Tasks**
 
@@ -78,7 +86,7 @@
 
 ### **Quality Checklist**
 
-- `make test` passes (26/26 tests) ✅
+- `make test` passes (`41 passed`) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
 - JSON results include: model, method, seed, metrics, timing
@@ -107,4 +115,4 @@
 - A10G memory management / CPU full-KV offload
 - GQA head mapping for Llama/Qwen
 
-**Ready to deploy on A10G and start experiments immediately!** 🚀
+**Ready to run the workshop-scale A10G sweep tonight.** Baselines cover `RULER 4K` + `LongBench`; IdleKV/ablations cover `RULER 4K`. `8K`, `sync_refresh`, and `LongBench + IdleKV` stay follow-up targets until additional decode-memory work lands.

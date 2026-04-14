@@ -12,10 +12,12 @@ Subtasks:
 """
 
 import random
+import gc
 import torch
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, List, Union
+from typing import Optional, List
+
+from idlekv.eval.inference import generate_text
 
 
 @dataclass
@@ -26,7 +28,13 @@ class RulerResult:
     num_samples: int
 
 
-def create_niah_test(tokenizer, context_length: int = 4096, num_needles: int = 1, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+def create_niah_test(
+    tokenizer,
+    context_length: int = 4096,
+    num_needles: int = 1,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    rng: Optional[random.Random] = None,
+):
     """
     Create a needle-in-a-haystack test for RULER evaluation.
 
@@ -43,8 +51,10 @@ def create_niah_test(tokenizer, context_length: int = 4096, num_needles: int = 1
     # Generate needles (facts to retrieve)
     needles = []
     answers = []
+    rng = rng or random.Random()
+
     for i in range(num_needles):
-        number = random.randint(1000, 9999)
+        number = rng.randint(1000, 9999)
         needle = f"The secret number {i+1} is {number}."
         answer = str(number)
         needles.append(needle)
@@ -107,7 +117,13 @@ def evaluate_ruler_niah(
     subtasks: Optional[List[str]] = None,
     num_samples: int = 50,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    manager = None,
+    manager=None,
+    press=None,
+    idle_budget_ms: float = 0.0,
+    phases="1+2",
+    sync_refresh_stride: Optional[int] = None,
+    max_new_tokens: int = 32,
+    seed: int = 42,
     **kwargs
 ) -> List[RulerResult]:
     """
@@ -146,46 +162,50 @@ def evaluate_ruler_niah(
 
         correct = 0
         total = num_samples
+        evaluated = 0
+        last_error = None
 
         for sample_idx in range(num_samples):
             try:
                 # Create test case
+                sample_rng = random.Random(seed + sample_idx + (1000 * len(results)))
                 input_ids, expected_answers = create_niah_test(
-                    tokenizer, context_length, num_needles, device
+                    tokenizer,
+                    context_length,
+                    num_needles,
+                    device,
+                    rng=sample_rng,
                 )
 
-                # Run inference
-                if manager is not None:
-                    # IdleKV evaluation
-                    compressed_kv = manager.prefill(input_ids)
-
-                    # Simple generation (shortened for speed)
-                    with torch.no_grad():
-                        output = model.generate(
-                            input_ids[:, -1:],
-                            past_key_values=compressed_kv,
-                            max_new_tokens=50,
-                            do_sample=False,
-                            pad_token_id=tokenizer.eos_token_id
-                        )
-                else:
-                    # Baseline evaluation (full cache)
-                    with torch.no_grad():
-                        output = model.generate(
-                            input_ids,
-                            max_new_tokens=50,
-                            do_sample=False,
-                            pad_token_id=tokenizer.eos_token_id
-                        )
-
-                # Decode and check
-                response = tokenizer.decode(output[0], skip_special_tokens=True)
+                generated = generate_text(
+                    model=model,
+                    tokenizer=tokenizer,
+                    input_ids=input_ids,
+                    max_new_tokens=max_new_tokens,
+                    manager=manager,
+                    press=press,
+                    idle_budget_ms=idle_budget_ms,
+                    phases=phases,
+                    sync_refresh_stride=sync_refresh_stride,
+                )
+                response = generated["text"]
+                evaluated += 1
                 if evaluate_niah_response(response, expected_answers):
                     correct += 1
 
             except Exception as e:
                 print(f"    Error in sample {sample_idx}: {e}")
+                last_error = e
                 # Continue with other samples
+            finally:
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+        if evaluated == 0 and last_error is not None:
+            raise RuntimeError(
+                f"RULER {subtask} failed for all {total} samples"
+            ) from last_error
 
         accuracy = correct / total if total > 0 else 0.0
         print(f"    {subtask}: {correct}/{total} = {accuracy:.1%}")
@@ -195,35 +215,6 @@ def evaluate_ruler_niah(
             context_length=context_length,
             accuracy=accuracy,
             num_samples=total
-        ))
-
-    return results
-    all_subtasks = subtasks or [
-        "niah_single_1", "niah_single_2", "niah_single_3",
-        "niah_multikey_1", "niah_multikey_2", "niah_multikey_3",
-        "niah_multivalue", "niah_multiquery",
-        "common_words", "freq_words",
-        "variable_tracking",
-        "qa_1", "qa_2",
-    ]
-
-    results = []
-    for task in all_subtasks:
-        # TODO: Implement actual RULER evaluation
-        # 1. Load RULER data for this subtask + context_length
-        # 2. For each sample:
-        #    a. Prefill context
-        #    b. If manager: compress, simulate tool calls with idle refinement
-        #    c. If press: apply kvpress compression
-        #    d. Generate answer
-        #    e. Score against ground truth
-        # 3. Aggregate accuracy
-
-        results.append(RulerResult(
-            subtask=task,
-            context_length=context_length,
-            accuracy=0.0,  # placeholder
-            num_samples=num_samples,
         ))
 
     return results

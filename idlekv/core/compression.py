@@ -7,7 +7,7 @@ This is the main entry point for using IdleKV.
 """
 
 import torch
-from typing import Optional
+from typing import Optional, Union
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from idlekv.core.shadow_buffer import ShadowBuffer
@@ -91,6 +91,58 @@ class CompressedKVManager:
         # query must use its true absolute position (= semantic_seq_len) to
         # keep positional phase coherent.
         self.semantic_seq_len: int = 0
+        self.compression_window_size: int = 32
+        # Allow a small decode-time slack so we do not rebuild the physical KV
+        # on every generated token once the cache is near its budget.
+        self.online_eviction_slack: int = 16
+
+    def _run_prefill_with_query_windows(self, input_ids: torch.Tensor):
+        """
+        Run prefill while capturing only the tail query window per layer.
+
+        SnapKV-style compression needs the hidden states feeding each layer for
+        the last W tokens, not the full `[num_layers, seq_len, hidden_dim]`
+        stack. Capturing just the tail window keeps 8K prefill viable on an
+        A10G-class GPU.
+        """
+        captured_inputs = [None] * self.num_layers
+        window_size = min(self.compression_window_size, input_ids.shape[1])
+        hooks = []
+
+        def make_hook(layer_idx):
+            def hook(_, args):
+                hidden_states = args[0]
+                captured_inputs[layer_idx] = (
+                    hidden_states[:, -window_size:, :].detach().clone()
+                )
+            return hook
+
+        for layer_idx, layer in enumerate(self.model.model.layers):
+            hooks.append(layer.register_forward_pre_hook(make_hook(layer_idx)))
+
+        try:
+            with torch.no_grad():
+                outputs = self.model(
+                    input_ids,
+                    use_cache=True,
+                    output_hidden_states=False,
+                )
+        finally:
+            for hook in hooks:
+                hook.remove()
+
+        if any(window is None for window in captured_inputs) and getattr(outputs, "hidden_states", None) is not None:
+            for layer_idx in range(min(self.num_layers, len(outputs.hidden_states))):
+                if captured_inputs[layer_idx] is None:
+                    captured_inputs[layer_idx] = (
+                        outputs.hidden_states[layer_idx][:, -window_size:, :].detach().clone()
+                    )
+
+        if any(window is None for window in captured_inputs):
+            missing = [idx for idx, window in enumerate(captured_inputs) if window is None]
+            raise RuntimeError(f"Failed to capture prefill query windows for layers: {missing}")
+
+        return outputs, captured_inputs
 
     def prefill(self, input_ids: torch.Tensor):
         """
@@ -102,18 +154,13 @@ class CompressedKVManager:
         Returns:
             Compressed past_key_values (DynamicCache or tuple format)
         """
-        with torch.no_grad():
-            outputs = self.model(input_ids, use_cache=True, output_hidden_states=True)
+        outputs, query_windows = self._run_prefill_with_query_windows(input_ids)
 
         full_kv = outputs.past_key_values
         seq_len = input_ids.shape[1]
 
-        # SnapKV needs hidden states from the last W tokens to project through
-        # each layer's q_proj. outputs.hidden_states is a tuple of length
-        # (num_layers + 1); hidden_states[i] is the INPUT to layer i
-        # (hidden_states[0] is the embedding; hidden_states[l] feeds layer l).
-        # q_proj of layer l acts on hidden_states[l].
-        self._prefill_hidden_states = outputs.hidden_states  # keep all layers
+        # SnapKV only needs the tail query window feeding each layer.
+        self._prefill_hidden_states = query_windows
 
         # Store full KV (CPU or GPU based on config)
         self.full_kv_store.store(full_kv)
@@ -123,7 +170,7 @@ class CompressedKVManager:
         self.query_buffer.clear()
         seed_len = min(self.query_buffer.buffer_size, seq_len)
         self.prefill_query_seed = torch.stack([
-            outputs.hidden_states[layer_idx][0, -seed_len:, :].detach().clone()
+            query_windows[layer_idx][0, -seed_len:, :].detach().clone()
             for layer_idx in range(self.num_layers)
         ], dim=1)
         # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
@@ -197,8 +244,8 @@ class CompressedKVManager:
 
             # --- (1) window hidden states feeding this layer -----------------
             if hidden_states_all is not None:
-                h_layer = hidden_states_all[layer_idx]  # [1, S, hidden_dim]
-                window_h = h_layer[0, -window_size:, :]  # [W, hidden_dim]
+                h_layer = hidden_states_all[layer_idx]  # [1, W, hidden_dim]
+                window_h = h_layer[0]  # [W, hidden_dim]
             else:
                 # Fallback: no hidden states captured (shouldn't happen under
                 # normal prefill). Skip scoring, keep last-budget tokens.
@@ -304,14 +351,21 @@ class CompressedKVManager:
             self.generated_kv_lists[layer_idx].append((k, v))
         self.semantic_seq_len += 1
 
-    def maybe_evict_online(self, past_key_values, sink_size: int = 4):
+    def maybe_evict_online(
+        self,
+        past_key_values,
+        sink_size: int = 4,
+        slack_tokens: Optional[int] = None,
+    ):
         """
         Streaming-LLM-style online eviction.
 
-        If the physical cache for any layer exceeds budget_per_layer, evict
-        the oldest middle tokens (keep first `sink_size` + most recent
-        `budget_per_layer - sink_size`) and push the evicted pairs into the
-        shadow buffer. Returns the (possibly mutated) past_key_values.
+        If the physical cache for any layer exceeds
+        `budget_per_layer + slack_tokens`, evict the oldest middle tokens
+        (keep first `sink_size` + most recent `budget_per_layer - sink_size`)
+        and push the evicted pairs into the shadow buffer. The small slack
+        amortizes copy cost during long decode runs and reduces allocator churn
+        on memory-constrained GPUs.
 
         This is a cheap O(1)-per-step policy; Phase 1 later uses TIR to
         promote important tokens back out of the shadow buffer.
@@ -319,10 +373,11 @@ class CompressedKVManager:
         from idlekv.utils.kv_cache import set_layer_kv
         if self.budget_per_layer <= 0:
             return past_key_values
+        slack = self.online_eviction_slack if slack_tokens is None else max(slack_tokens, 0)
         for layer_idx in range(self.num_layers):
             k, v = get_layer_kv(past_key_values, layer_idx)  # [1, H, S, D]
             S = k.shape[2]
-            if S <= self.budget_per_layer:
+            if S <= self.budget_per_layer + slack:
                 continue
             overflow = S - self.budget_per_layer
             # Evict positions [sink_size : sink_size + overflow]
@@ -396,6 +451,7 @@ class CompressedKVManager:
         self,
         past_key_values,
         max_time_ms: float = 1000,
+        phases: Union[str, int, None] = "1+2",
     ) -> RefinementResult:
         """
         Run idle-time refinement (call during tool-call pauses).
@@ -424,6 +480,7 @@ class CompressedKVManager:
             generated_kv=self._get_generated_kv(),
             max_time_ms=max_time_ms,
             num_generated=num_gen,
+            phases=phases,
         )
 
     def on_tool_result_prefill(self, full_kv, new_seq_len: int):

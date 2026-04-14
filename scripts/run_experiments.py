@@ -1,250 +1,480 @@
 #!/usr/bin/env python3
 """
-Run the full IdleKV experiment suite.
+Run the real IdleKV experiment suite.
 
-Reads config from YAML file. Runs all baselines, IdleKV configurations,
-and ablations. Saves structured JSON results.
-
-Usage:
-    python scripts/run_experiments.py --config configs/main.yaml
-    python scripts/run_experiments.py --config configs/main.yaml --only-baselines
-    python scripts/run_experiments.py --config configs/main.yaml --model llama8b --ratio 0.5
+This script executes actual benchmark evaluations and saves one JSON file per
+experiment so long sweeps can be resumed safely after interruption.
 """
 
 import argparse
+import gc
 import json
-import yaml
+import os
+import random
 import sys
 import time
-import torch
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+import torch
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from idlekv.baselines.kvpress_baselines import get_press
 from idlekv.core.compression import CompressedKVManager
-from idlekv.simulation.harness import simulate_agentic_workload
-from idlekv.eval.ruler import evaluate_ruler_niah
+from idlekv.core.scheduler import IdleScheduler
 from idlekv.eval.longbench import evaluate_longbench
+from idlekv.eval.ruler import evaluate_ruler_niah
 
 
 def load_config(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
 
 
-def run_kvpress_baseline(model, tokenizer, benchmark_fn, method, ratio, **kwargs):
-    """Run a kvpress-based baseline (SnapKV, H2O, StreamingLLM)."""
-    try:
-        import kvpress
-
-        press_map = {
-            "snapkv": kvpress.SnapKVPress,
-            "h2o": kvpress.ObservedAttentionPress,
-            "streaminglm": kvpress.StreamingLLMPress,
-        }
-
-        if method not in press_map:
-            raise ValueError(f"Unknown method: {method}")
-
-        press_cls = press_map[method]
-        press_kwargs = {"compression_ratio": ratio} if ratio else {}
-        press = press_cls(**press_kwargs)
-
-        # Run benchmark with kvpress
-        return benchmark_fn(model, tokenizer, press=press, **kwargs)
-
-    except ImportError:
-        print(f"    kvpress not available, returning mock results for {method}")
-        # Return mock results when kvpress is not available
-        return {
-            "status": "mock",
-            "method": method,
-            "ratio": ratio,
-            "accuracy": 0.4 + (hash(method) % 100) / 200.0,  # Deterministic but varied
-            "tokens_per_sec": 50.0 + (hash(method) % 20)
-        }
-
-
-def run_idlekv(model, tokenizer, benchmark_fn, ratio, idle_budget_ms, phases, **kwargs):
-    """Run IdleKV with specified idle budget and phases."""
-    from idlekv.core.compression import CompressedKVManager
-
-    manager = CompressedKVManager(
-        model,
-        compression_ratio=ratio,
-        shadow_size=kwargs.pop("shadow_size", 256),
-        query_buffer_size=kwargs.pop("query_buffer_size", 32),
-        offload_full_kv=kwargs.pop("offload_full_kv", True),
-    )
-
-    # Run benchmark with IdleKV manager
-    return benchmark_fn(
-        model, tokenizer,
-        manager=manager,
-        idle_budget_ms=idle_budget_ms,
-        phases=phases,
-        **kwargs,
-    )
-
-
-def load_model_and_tokenizer(model_cfg: dict, device: str = "auto"):
-    """Load model and tokenizer from config."""
+def load_model_and_tokenizer(model_cfg: dict, attn_implementation: str = "sdpa"):
+    """Load a model directly onto GPU when available to avoid offload churn."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    print(f"  Loading model: {model_cfg['name']}")
-
-    tokenizer = AutoTokenizer.from_pretrained(model_cfg['name'])
+    print(f"  Loading model: {model_cfg['name']} (attn={attn_implementation})")
+    tokenizer = AutoTokenizer.from_pretrained(model_cfg["name"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # For testing on Mac (CPU), use smaller models and float32
-    if device == "cpu" or not torch.cuda.is_available():
+    if torch.cuda.is_available():
         model = AutoModelForCausalLM.from_pretrained(
-            model_cfg['name'],
-            torch_dtype=torch.float32,
-            device_map="cpu"
+            model_cfg["name"],
+            dtype=torch.float16,
+            device_map={"": 0},
+            attn_implementation=attn_implementation,
         )
-        device = "cpu"
+        device = "cuda"
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            model_cfg['name'],
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto"
+            model_cfg["name"],
+            dtype=torch.float32,
+            device_map="cpu",
         )
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cpu"
 
     model.eval()
     return model, tokenizer, device
 
 
-def execute_experiment(exp: dict, config: dict) -> dict:
-    """Execute a single experiment based on its configuration."""
+def aggregate_ruler(results) -> dict:
+    subtask_scores = {
+        result.subtask: {
+            "accuracy": result.accuracy,
+            "samples": result.num_samples,
+        }
+        for result in results
+    }
+    avg_accuracy = (
+        sum(result.accuracy for result in results) / len(results)
+        if results else 0.0
+    )
+    return {
+        **subtask_scores,
+        "avg_accuracy": avg_accuracy,
+        "num_subtasks": len(results),
+    }
 
-    # Load model (mock for now to avoid actual model downloads)
-    print(f"  [MOCK] Loading model: {exp['model']['name']}")
 
-    # Mock model loading - in real implementation, would use load_model_and_tokenizer
-    model_name = exp["model"]["name"]
-    device = "cpu"  # For testing
+def aggregate_longbench(results) -> dict:
+    subtask_scores = {
+        result.subtask: {
+            "score": result.score,
+            "samples": result.num_samples,
+        }
+        for result in results
+    }
+    avg_score = (
+        sum(result.score for result in results) / len(results)
+        if results else 0.0
+    )
+    return {
+        **subtask_scores,
+        "avg_score": avg_score,
+        "num_subtasks": len(results),
+    }
 
-    # Create mock tokenizer
-    class MockTokenizer:
-        def __init__(self):
-            self.eos_token_id = 2
-            self.pad_token = None
 
-    tokenizer = MockTokenizer()
+def phases_label(phases) -> str:
+    return IdleScheduler.normalize_phases(phases)[2]
 
-    # Set random seed
-    torch.manual_seed(exp.get("seed", 42))
+
+def benchmark_list(config: dict, args, allowed: list[str] | None = None) -> list[str]:
+    if args.benchmarks:
+        requested = [name.strip() for name in args.benchmarks.split(",") if name.strip()]
+        if allowed is None:
+            return requested
+        return [name for name in requested if name in allowed]
+    return list(allowed) if allowed is not None else list(config["evaluation"]["benchmarks"])
+
+
+def benchmarks_for_experiment(exp: dict, config: dict, args) -> list[str]:
+    default = list(config["evaluation"]["benchmarks"])
+    by_type = config["evaluation"].get("benchmarks_by_type", {})
+    allowed = list(by_type.get(exp["type"], default))
 
     if exp["type"] == "baseline":
-        # Run baseline experiment
-        method = exp["baseline"]["method"]
-        ratio = exp["baseline"].get("ratio", 0.5)
+        baseline = exp["baseline"]
+        if baseline.get("benchmarks"):
+            allowed = list(baseline["benchmarks"])
+        excluded = set(baseline.get("exclude_benchmarks", []))
+        if excluded:
+            allowed = [name for name in allowed if name not in excluded]
 
-        print(f"    Running baseline: {method} (ratio={ratio})")
+    selected = benchmark_list(config, args, allowed=allowed)
+    if not selected:
+        raise ValueError(
+            f"No benchmarks selected for experiment type {exp['type']!r} "
+            f"after applying config/CLI filters."
+        )
+    return selected
 
-        # Mock benchmark results
-        results = {
-            "method": method,
+
+def benchmark_num_samples(args) -> int:
+    return args.num_samples if args.num_samples is not None else 50
+
+
+def ruler_context_lengths(config: dict, args) -> list[int]:
+    if args.ruler_context_lengths:
+        return [int(value.strip()) for value in args.ruler_context_lengths.split(",") if value.strip()]
+    return list(config["evaluation"]["ruler"]["context_lengths"])
+
+
+def longbench_max_input_length(config: dict, args) -> int:
+    if args.longbench_max_input_length is not None:
+        return args.longbench_max_input_length
+    return int(config["evaluation"].get("longbench", {}).get("max_input_length", 4096))
+
+
+def build_experiment_matrix(config: dict, args) -> list[dict]:
+    models = config["models"]
+    if args.model:
+        models = [model for model in models if model["short"] == args.model]
+    if not models:
+        raise ValueError(f"No models matched --model {args.model!r}")
+
+    seeds = [args.seed] if args.seed is not None else config["evaluation"]["seeds"]
+    experiments = []
+
+    for model_cfg in models:
+        for seed in seeds:
+            if not args.only_idlekv and not args.only_ablations:
+                for baseline in config["baselines"]:
+                    experiments.append({
+                        "type": "baseline",
+                        "model": model_cfg,
+                        "seed": seed,
+                        "baseline": baseline,
+                    })
+
+            if not args.only_baselines and not args.only_ablations:
+                ratio = args.ratio or config["compression"]["primary_ratio"]
+                for budget in config["idlekv"]["idle_budgets_ms"]:
+                    for phases in config["idlekv"]["phases"]:
+                        experiments.append({
+                            "type": "idlekv",
+                            "model": model_cfg,
+                            "seed": seed,
+                            "ratio": ratio,
+                            "idle_budget_ms": budget,
+                            "phases": phases,
+                        })
+
+            if not args.only_baselines and not args.only_idlekv:
+                for shadow_size in config["ablations"]["shadow_buffer_sizes"]:
+                    experiments.append({
+                        "type": "ablation_buffer",
+                        "model": model_cfg,
+                        "seed": seed,
+                        "ratio": args.ratio or config["compression"]["primary_ratio"],
+                        "shadow_buffer_size": shadow_size,
+                    })
+
+    type_order = {"baseline": 0, "idlekv": 1, "ablation_buffer": 2}
+    experiments.sort(
+        key=lambda exp: (
+            exp["model"]["short"],
+            exp["seed"],
+            type_order[exp["type"]],
+        )
+    )
+    if args.max_experiments is not None:
+        experiments = experiments[:args.max_experiments]
+    return experiments
+
+
+def make_manager(model, config: dict, ratio: float, shadow_size: int) -> CompressedKVManager:
+    compression_cfg = config["compression"]
+    return CompressedKVManager(
+        model,
+        compression_ratio=ratio,
+        shadow_size=shadow_size,
+        query_buffer_size=compression_cfg["query_buffer_size"],
+        offload_full_kv=compression_cfg["offload_full_kv"],
+    )
+
+
+def serialize_experiment(exp: dict) -> dict:
+    serialized = {}
+    for key, value in exp.items():
+        if isinstance(value, Path):
+            serialized[key] = str(value)
+        else:
+            serialized[key] = value
+    return serialized
+
+
+def experiment_slug(exp: dict) -> str:
+    model_short = exp["model"]["short"]
+    seed = exp["seed"]
+
+    if exp["type"] == "baseline":
+        baseline = exp["baseline"]
+        name = baseline["name"]
+        return f"{name}_{model_short}_seed{seed}"
+
+    if exp["type"] == "idlekv":
+        phases = phases_label(exp["phases"])
+        return (
+            f"idlekv_r{exp['ratio']}_budget{exp['idle_budget_ms']}"
+            f"_phases{phases.replace('+', '')}_{model_short}_seed{seed}"
+        )
+
+    if exp["type"] == "ablation_buffer":
+        return (
+            f"buffer{exp['shadow_buffer_size']}_r{exp['ratio']}"
+            f"_{model_short}_seed{seed}"
+        )
+
+    raise ValueError(f"Unknown experiment type: {exp['type']}")
+
+
+def result_path(output_dir: Path, exp: dict) -> Path:
+    subdir_map = {
+        "baseline": "baselines",
+        "idlekv": "idlekv",
+        "ablation_buffer": "ablations",
+    }
+    path = output_dir / subdir_map[exp["type"]] / f"{experiment_slug(exp)}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def release_model(model, tokenizer):
+    if model is not None:
+        del model
+    if tokenizer is not None:
+        del tokenizer
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return None, None
+
+
+def required_attn_implementation(exp: dict) -> str:
+    """
+    Return the attention implementation required by an experiment.
+
+    kvpress' ObservedAttentionPress relies on eager attention hooks, while the
+    rest of the current stack is happiest on SDPA.
+    """
+    if exp["type"] == "baseline":
+        baseline = exp["baseline"]
+        if baseline.get("method") == "h2o":
+            return "eager"
+    return "sdpa"
+
+
+def run_benchmarks(
+    model,
+    tokenizer,
+    device: str,
+    config: dict,
+    args,
+    seed: int,
+    benchmarks: list[str] | None = None,
+    *,
+    manager=None,
+    press=None,
+    idle_budget_ms: float = 0.0,
+    phases="1+2",
+    sync_refresh_stride=None,
+) -> dict:
+    benchmark_results = {}
+    num_samples = benchmark_num_samples(args)
+    selected_benchmarks = benchmarks or benchmark_list(config, args)
+
+    for benchmark in selected_benchmarks:
+        if benchmark == "ruler":
+            benchmark_results["ruler"] = {}
+            for context_length in ruler_context_lengths(config, args):
+                results = evaluate_ruler_niah(
+                    model=model,
+                    tokenizer=tokenizer,
+                    context_length=context_length,
+                    num_samples=num_samples,
+                    device=device,
+                    manager=manager,
+                    press=press,
+                    idle_budget_ms=idle_budget_ms,
+                    phases=phases,
+                    sync_refresh_stride=sync_refresh_stride,
+                    seed=seed,
+                )
+                benchmark_results["ruler"][str(context_length)] = aggregate_ruler(results)
+        elif benchmark == "longbench":
+            results = evaluate_longbench(
+                model=model,
+                tokenizer=tokenizer,
+                num_samples=num_samples,
+                device=device,
+                manager=manager,
+                press=press,
+                idle_budget_ms=idle_budget_ms,
+                phases=phases,
+                sync_refresh_stride=sync_refresh_stride,
+                max_input_length=longbench_max_input_length(config, args),
+            )
+            benchmark_results["longbench"] = aggregate_longbench(results)
+        else:
+            raise ValueError(f"Unsupported benchmark: {benchmark}")
+
+    return benchmark_results
+
+
+def execute_experiment(exp: dict, config: dict, args, model, tokenizer, device: str) -> dict:
+    random.seed(exp["seed"])
+    torch.manual_seed(exp["seed"])
+    selected_benchmarks = benchmarks_for_experiment(exp, config, args)
+
+    started = time.perf_counter()
+    result = {
+        "status": "completed",
+        "experiment": serialize_experiment(exp),
+    }
+
+    if exp["type"] == "baseline":
+        baseline = exp["baseline"]
+        name = baseline["name"]
+        ratio = baseline.get("ratio")
+        result.update({
+            "method": name,
             "ratio": ratio,
             "seed": exp["seed"],
-            "benchmark_results": {}
-        }
+        })
 
-        # Mock RULER results
-        if method == "full_cache":
-            accuracy = 0.85
-        elif method == "snapkv":
-            accuracy = 0.70 + ratio * 0.1  # Better compression = lower accuracy
+        if name == "full_cache":
+            benchmark_results = run_benchmarks(
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                config=config,
+                args=args,
+                seed=exp["seed"],
+                benchmarks=selected_benchmarks,
+            )
+        elif name == "sync_refresh":
+            ratio = ratio if ratio is not None else config["compression"]["primary_ratio"]
+            manager = make_manager(model, config, ratio=ratio, shadow_size=0)
+            benchmark_results = run_benchmarks(
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                config=config,
+                args=args,
+                seed=exp["seed"],
+                benchmarks=selected_benchmarks,
+                manager=manager,
+                idle_budget_ms=0.0,
+                phases="2",
+                sync_refresh_stride=baseline.get("refresh_stride", 15),
+            )
         else:
-            accuracy = 0.60 + (hash(method) % 100) / 1000.0
+            compression_ratio = ratio if ratio is not None else config["compression"]["primary_ratio"]
+            press = get_press(
+                baseline["method"],
+                compression_ratio=compression_ratio,
+            )
+            benchmark_results = run_benchmarks(
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                config=config,
+                args=args,
+                seed=exp["seed"],
+                benchmarks=selected_benchmarks,
+                press=press,
+            )
 
-        results["benchmark_results"]["ruler"] = {
-            "niah_single_1": {"accuracy": accuracy, "samples": 50},
-            "avg_accuracy": accuracy
-        }
-
-        # Mock LongBench results
-        f1_score = accuracy * 0.8  # Roughly correlated
-        results["benchmark_results"]["longbench"] = {
-            "narrativeqa": {"f1": f1_score, "samples": 50},
-            "avg_f1": f1_score
-        }
-
-        return results
+        result["benchmark_results"] = benchmark_results
 
     elif exp["type"] == "idlekv":
-        # Run IdleKV experiment
-        ratio = exp["ratio"]
-        idle_budget = exp["idle_budget_ms"]
-        phases = exp["phases"]
-
-        print(f"    Running IdleKV: ratio={ratio}, budget={idle_budget}ms, phases={phases}")
-
-        # Mock IdleKV manager
-        results = {
+        manager = make_manager(
+            model,
+            config,
+            ratio=exp["ratio"],
+            shadow_size=config["compression"]["shadow_buffer_size"],
+        )
+        result.update({
             "method": "idlekv",
-            "ratio": ratio,
-            "idle_budget_ms": idle_budget,
-            "phases": phases,
+            "ratio": exp["ratio"],
+            "idle_budget_ms": exp["idle_budget_ms"],
+            "phases": phases_label(exp["phases"]),
             "seed": exp["seed"],
-            "benchmark_results": {}
-        }
-
-        # Mock improved accuracy due to refinement
-        base_accuracy = 0.70 + ratio * 0.1
-        improvement = min(0.05, idle_budget / 10000.0)  # More budget = better results
-        if "phase2" in phases:
-            improvement += 0.02
-
-        accuracy = min(0.95, base_accuracy + improvement)
-
-        results["benchmark_results"]["ruler"] = {
-            "niah_single_1": {"accuracy": accuracy, "samples": 50},
-            "avg_accuracy": accuracy
-        }
-
-        f1_score = accuracy * 0.8
-        results["benchmark_results"]["longbench"] = {
-            "narrativeqa": {"f1": f1_score, "samples": 50},
-            "avg_f1": f1_score
-        }
-
-        return results
+        })
+        result["benchmark_results"] = run_benchmarks(
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            config=config,
+            args=args,
+            seed=exp["seed"],
+            benchmarks=selected_benchmarks,
+            manager=manager,
+            idle_budget_ms=exp["idle_budget_ms"],
+            phases=exp["phases"],
+        )
 
     elif exp["type"] == "ablation_buffer":
-        # Run shadow buffer size ablation
-        buffer_size = exp["shadow_buffer_size"]
-        ratio = exp["ratio"]
-
-        print(f"    Running buffer ablation: size={buffer_size}, ratio={ratio}")
-
-        # Mock ablation results
-        base_accuracy = 0.70 + ratio * 0.1
-        # Larger buffers help up to a point
-        buffer_benefit = min(0.03, buffer_size / 10000.0)
-        accuracy = base_accuracy + buffer_benefit
-
-        results = {
+        manager = make_manager(
+            model,
+            config,
+            ratio=exp["ratio"],
+            shadow_size=exp["shadow_buffer_size"],
+        )
+        result.update({
             "method": "idlekv_buffer_ablation",
-            "ratio": ratio,
-            "shadow_buffer_size": buffer_size,
+            "ratio": exp["ratio"],
+            "shadow_buffer_size": exp["shadow_buffer_size"],
+            "idle_budget_ms": 100,
+            "phases": "1",
             "seed": exp["seed"],
-            "benchmark_results": {
-                "ruler": {
-                    "niah_single_1": {"accuracy": accuracy, "samples": 50},
-                    "avg_accuracy": accuracy
-                }
-            }
-        }
-
-        return results
+        })
+        result["benchmark_results"] = run_benchmarks(
+            model=model,
+            tokenizer=tokenizer,
+            device=device,
+            config=config,
+            args=args,
+            seed=exp["seed"],
+            benchmarks=selected_benchmarks,
+            manager=manager,
+            idle_budget_ms=100,
+            phases=1,
+        )
 
     else:
         raise ValueError(f"Unknown experiment type: {exp['type']}")
+
+    result["wall_time_sec"] = time.perf_counter() - started
+    return result
 
 
 def main():
@@ -253,12 +483,18 @@ def main():
     parser.add_argument("--only-baselines", action="store_true")
     parser.add_argument("--only-idlekv", action="store_true")
     parser.add_argument("--only-ablations", action="store_true")
-    parser.add_argument("--model", type=str, default=None, help="Run only this model (short name)")
-    parser.add_argument("--ratio", type=float, default=None, help="Run only this ratio")
+    parser.add_argument("--model", type=str, default=None, help="Run only this model short name")
+    parser.add_argument("--ratio", type=float, default=None, help="Override compression ratio")
     parser.add_argument("--seed", type=int, default=None, help="Run only this seed")
-    parser.add_argument("--output-dir", type=str, default=None, help="Override output_dir from config")
-    parser.add_argument("--dry-run", action="store_true", help="Print what would run")
-    parser.add_argument("--verbose", action="store_true", help="Print loaded config and experiment payloads")
+    parser.add_argument("--output-dir", type=str, default=None)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--num-samples", type=int, default=None, help="Override samples per benchmark subtask")
+    parser.add_argument("--benchmarks", type=str, default=None, help="Comma-separated subset, e.g. ruler,longbench")
+    parser.add_argument("--ruler-context-lengths", type=str, default=None, help="Comma-separated RULER context lengths, e.g. 4096,8192")
+    parser.add_argument("--longbench-max-input-length", type=int, default=None, help="Override LongBench prompt budget, e.g. 4096")
+    parser.add_argument("--max-experiments", type=int, default=None, help="Cap the experiment count for smoke tests")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip experiments whose result JSON already exists")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -269,97 +505,98 @@ def main():
         print("Loaded config:")
         print(json.dumps(config, indent=2))
 
-    # Filter models
-    models = config["models"]
-    if args.model:
-        models = [m for m in models if m["short"] == args.model]
-
-    seeds = [args.seed] if args.seed else config["evaluation"]["seeds"]
-
-    # Build experiment matrix
-    experiments = []
-
-    for model_cfg in models:
-        for seed in seeds:
-            if not args.only_idlekv and not args.only_ablations:
-                # Baselines
-                for bl in config["baselines"]:
-                    experiments.append({
-                        "type": "baseline",
-                        "model": model_cfg,
-                        "baseline": bl,
-                        "seed": seed,
-                    })
-
-            if not args.only_baselines and not args.only_ablations:
-                # IdleKV at primary ratio across idle budgets
-                ratio = args.ratio or config["compression"]["primary_ratio"]
-                for budget in config["idlekv"]["idle_budgets_ms"]:
-                    for phases in config["idlekv"]["phases"]:
-                        experiments.append({
-                            "type": "idlekv",
-                            "model": model_cfg,
-                            "ratio": ratio,
-                            "idle_budget_ms": budget,
-                            "phases": phases,
-                            "seed": seed,
-                        })
-
-            if not args.only_baselines and not args.only_idlekv:
-                # Ablations: shadow buffer size
-                for buf_size in config["ablations"]["shadow_buffer_sizes"]:
-                    experiments.append({
-                        "type": "ablation_buffer",
-                        "model": model_cfg,
-                        "ratio": config["compression"]["primary_ratio"],
-                        "shadow_buffer_size": buf_size,
-                        "seed": seed,
-                    })
-
+    experiments = build_experiment_matrix(config, args)
     print(f"Total experiments: {len(experiments)}")
     if args.dry_run:
-        for i, exp in enumerate(experiments):
-            print(f"  [{i+1}] {exp['type']}: model={exp['model']['short']}, seed={exp['seed']}, "
-                  f"{json.dumps({k:v for k,v in exp.items() if k not in ('type','model','seed')})}")
+        for index, exp in enumerate(experiments, start=1):
+            benchmarks = benchmarks_for_experiment(exp, config, args)
+            print(
+                f"  [{index}] {exp['type']}: model={exp['model']['short']}, "
+                f"seed={exp['seed']}, benchmarks={benchmarks}, "
+                f"out={result_path(output_dir, exp)}"
+            )
         return
 
-    # Run experiments
     run_log = {
-        "config": config,
+        "config_path": str(args.config),
+        "output_dir": str(output_dir),
         "start_time": datetime.now().isoformat(),
         "results": [],
     }
+    run_log_path = output_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
-    for i, exp in enumerate(experiments):
-        print(f"\n{'='*60}")
-        print(f"Experiment {i+1}/{len(experiments)}: {exp['type']}")
-        print(f"  Model: {exp['model']['short']}, Seed: {exp['seed']}")
-        print(f"{'='*60}")
-        if args.verbose:
-            print(json.dumps(exp, indent=2))
+    current_model_key = None
+    model = None
+    tokenizer = None
+    device = "cpu"
 
-        # Execute experiment
-        try:
-            result = execute_experiment(exp, config)
-            result["experiment"] = exp
-            result["status"] = "completed"
-        except Exception as e:
-            print(f"    ERROR: {e}")
-            result = {
-                "experiment": exp,
-                "status": "failed",
-                "error": str(e)
-            }
+    try:
+        for index, exp in enumerate(experiments, start=1):
+            out_path = result_path(output_dir, exp)
+            if args.skip_existing and out_path.exists():
+                print(f"[{index}/{len(experiments)}] Skipping existing {out_path.name}")
+                run_log["results"].append({
+                    "experiment": serialize_experiment(exp),
+                    "status": "skipped_existing",
+                    "result_path": str(out_path),
+                })
+                continue
 
-        run_log["results"].append(result)
+            model_key = (
+                exp["model"]["short"],
+                required_attn_implementation(exp),
+            )
+            if current_model_key != model_key:
+                model, tokenizer = release_model(model, tokenizer)
+                model, tokenizer, device = load_model_and_tokenizer(
+                    exp["model"],
+                    attn_implementation=model_key[1],
+                )
+                current_model_key = model_key
+
+            print(f"\n{'=' * 72}")
+            print(f"Experiment {index}/{len(experiments)}")
+            print(f"  Type: {exp['type']}")
+            print(f"  Model: {exp['model']['short']}")
+            print(f"  Seed: {exp['seed']}")
+            print(f"  Output: {out_path}")
+            print(f"{'=' * 72}")
+            if args.verbose:
+                print(json.dumps(exp, indent=2))
+
+            try:
+                result = execute_experiment(exp, config, args, model, tokenizer, device)
+                with open(out_path, "w", encoding="utf-8") as handle:
+                    json.dump(result, handle, indent=2)
+                run_log["results"].append({
+                    "experiment": serialize_experiment(exp),
+                    "status": "completed",
+                    "result_path": str(out_path),
+                })
+            except Exception as exc:
+                failure = {
+                    "experiment": serialize_experiment(exp),
+                    "status": "failed",
+                    "error": str(exc),
+                    "result_path": str(out_path),
+                }
+                run_log["results"].append(failure)
+                print(f"  ERROR: {exc}")
+
+            with open(run_log_path, "w", encoding="utf-8") as handle:
+                json.dump(run_log, handle, indent=2)
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+    finally:
+        model, tokenizer = release_model(model, tokenizer)
 
     run_log["end_time"] = datetime.now().isoformat()
-
-    # Save run log
-    log_path = output_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(log_path, "w") as f:
-        json.dump(run_log, f, indent=2)
-    print(f"\nRun log saved to {log_path}")
+    with open(run_log_path, "w", encoding="utf-8") as handle:
+        json.dump(run_log, handle, indent=2)
+    print(f"\nRun log saved to {run_log_path}")
 
 
 if __name__ == "__main__":

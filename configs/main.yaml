@@ -11,7 +11,7 @@ models:
 
 compression:
   ratios: [0.3, 0.5, 0.7]
-  primary_ratio: 0.5
+  primary_ratio: 0.7
   shadow_buffer_size: 256
   query_buffer_size: 32
   offload_full_kv: true  # Store full prefill KV on CPU for 24GB A10G setup
@@ -27,8 +27,24 @@ evaluation:
   benchmarks:
     - ruler
     - longbench
+  # Single-A10G workshop/default matrix:
+  # - baselines run on both RULER and LongBench
+  # - IdleKV and ablations default to RULER only
+  # The LongBench IdleKV path remains follow-up work until decode-time cache
+  # growth is optimized beyond the current HF DynamicCache concat behavior.
+  benchmarks_by_type:
+    baseline: [ruler, longbench]
+    idlekv: [ruler]
+    ablation_buffer: [ruler]
   ruler:
-    context_lengths: [4096, 8192]
+    # A10G nightly default: 4K is stable for the real IdleKV path.
+    # Use --ruler-context-lengths 4096,8192 for follow-up runs on larger-memory GPUs
+    # or after additional memory optimization work.
+    context_lengths: [4096]
+  longbench:
+    # Baseline/default LongBench prompt budget on this A10G runner. Override
+    # with --longbench-max-input-length for follow-up experiments.
+    max_input_length: 4096
   throughput:
     num_warmup_tokens: 32
     num_measure_tokens: 128
@@ -36,6 +52,9 @@ evaluation:
 baselines:
   - name: full_cache
     ratio: null
+  - name: snapkv_0.7
+    ratio: 0.7
+    method: snapkv
   - name: snapkv_0.5
     ratio: 0.5
     method: snapkv
@@ -47,14 +66,15 @@ baselines:
     method: h2o
   - name: streaminglm
     method: streaminglm
-  - name: sync_refresh
-    ratio: 0.5
-    method: snapkv
-    refresh_stride: 15
   - name: snapkv_0.3_isocompute
     ratio: 0.3
     method: snapkv
     note: "Measured at same wall-clock as IdleKV"
+
+# `sync_refresh` remains implemented in the runner, but it is not part of the
+# default A10G nightly suite because the clean isolated 4K path still OOMs on
+# this 24GB GPU. Run it explicitly as follow-up work after Phase 2 memory
+# optimization or on larger-memory hardware.
 
 idlekv:
   idle_budgets_ms: [0, 50, 100, 500, 1000, 2000, 5000]
