@@ -110,6 +110,25 @@ def test_prefill_compression():
         assert len(layer_list) == 0
 
 
+def test_seed_query_buffer_from_prefill():
+    """Prefill captures prompt-tail hidden states for quick query seeding."""
+    model = create_mock_model()
+    manager = CompressedKVManager(model=model, query_buffer_size=4)
+
+    seq_len = 10
+    input_ids = torch.randint(0, 1000, (1, seq_len))
+    mock_outputs = create_mock_outputs(seq_len=seq_len)
+    model.return_value = mock_outputs
+
+    manager.prefill(input_ids)
+    seeded = manager.seed_query_buffer_from_prefill()
+
+    assert seeded == 4
+    buf = manager.query_buffer.get()
+    expected = mock_outputs.hidden_states[-1][0, -4:, :]
+    assert torch.equal(buf, expected)
+
+
 def test_on_token_generated():
     """Test token generation tracking."""
     model = create_mock_model()

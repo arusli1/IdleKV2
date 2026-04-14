@@ -82,6 +82,7 @@ class CompressedKVManager:
 
         # Fix Bug 3: Use list of lists to avoid O(n^2) torch.cat
         self.generated_kv_lists: list = []  # list of lists of (k, v) per layer
+        self.prefill_query_seed: Optional[torch.Tensor] = None
 
         # Semantic sequence length = prefill_len + tokens generated since last
         # prefill. The compressed cache's physical length differs from this,
@@ -119,6 +120,9 @@ class CompressedKVManager:
         # Reset buffers for new session
         self.shadow_buffer.clear()
         self.query_buffer.clear()
+        self.prefill_query_seed = outputs.hidden_states[-1][
+            0, -self.query_buffer.buffer_size:
+        ].detach().clone()
         # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
         self.generated_kv_lists = [[] for _ in range(self.num_layers)]
 
@@ -325,6 +329,24 @@ class CompressedKVManager:
         return torch.arange(
             start, start + num_new_tokens, device=self.device
         ).unsqueeze(0)
+
+    def seed_query_buffer_from_prefill(self) -> int:
+        """
+        Seed the query buffer from the tail of the prefill prompt.
+
+        This is useful for short validation scripts that need question-
+        conditioned queries before any generation has happened.
+
+        Returns:
+            Number of hidden states written into the query buffer.
+        """
+        self.query_buffer.clear()
+        if self.prefill_query_seed is None:
+            return 0
+
+        for hidden_state in self.prefill_query_seed:
+            self.query_buffer.append(hidden_state)
+        return int(self.prefill_query_seed.shape[0])
 
     def _get_generated_kv(self) -> list:
         """

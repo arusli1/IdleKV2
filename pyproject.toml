@@ -22,6 +22,11 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["idlekv*"]
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests that load a real model or run longer end-to-end flows",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest",
