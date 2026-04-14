@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from idlekv.core.compression import CompressedKVManager
 from idlekv.utils.kv_cache import get_layer_kv
+from idlekv.utils.generation import last_token_logits_kwargs
 
 
 @dataclass
@@ -172,6 +173,7 @@ def ingest_suffix(model, manager, past_key_values, suffix_ids: torch.Tensor):
             position_ids=manager.next_position_ids(num_new_tokens=num_suffix_tokens),
             use_cache=True,
             output_hidden_states=True,
+            **last_token_logits_kwargs(model),
         )
     current_past_kv = outputs.past_key_values
     total_seq = get_layer_kv(current_past_kv, 0)[0].shape[2]
@@ -293,6 +295,7 @@ def evaluate_full_cache(model, tokenizer, trial: DelayedQueryTrial):
         outputs = model(
             input_ids=trial.full_prompt_ids,
             use_cache=True,
+            **last_token_logits_kwargs(model),
         )
         past_key_values = outputs.past_key_values
         logits = outputs.logits[:, -1, :]

@@ -52,8 +52,20 @@ compression ratios.
 Treat this gate as a mechanism check for delayed-query recovery, not as a
 substitute for the full RULER/LongBench experiment suite.
 
-### Step 2: Full Experiment Suite
-Run incremental subsets. On a single A10G, the default nightly path is:
+### Step 2: Small Scouts First
+Before launching the broader matrix, run the reduced scouts that choose the
+final settings:
+```bash
+# Reduced two-model scout that already completed on this machine
+python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
+
+# Most valuable next scout: verify the Qwen signal across seeds
+python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
+```
+
+### Step 3: Broader Experiment Suite
+Once the scouts have locked the settings, expand to the broader matrix. On a
+single A10G, the stable default path is:
 - baselines run on `RULER 4K` plus `LongBench`
 - IdleKV and ablations default to `RULER 4K` at `r=0.7`
 - `sync_refresh` excluded from the default matrix because its clean isolated
@@ -87,7 +99,7 @@ python scripts/run_experiments.py --config configs/main.yaml --only-idlekv --mod
 python scripts/run_experiments.py --config configs/main.yaml --model llama8b --seed 42
 ```
 
-### Step 3: Generate Figures
+### Step 4: Generate Figures
 ```bash
 python scripts/plot_figures.py --results-dir results/
 ```
@@ -122,6 +134,9 @@ IdleKV/
 │       └── timing.py           # Performance measurement
 ├── configs/
 │   ├── main.yaml              # Main experiment configuration
+│   ├── preliminary_idlekv.yaml # Reduced scout used to choose main settings
+│   ├── qwen_seed_followup.yaml # Qwen-only seed robustness scout
+│   ├── a100_scaleup.yaml      # Larger-memory expansion config
 │   └── models.yaml            # Model specifications
 ├── scripts/
 │   ├── go_no_go.py            # Day 3 decision gate

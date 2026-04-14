@@ -1,29 +1,25 @@
-from types import SimpleNamespace
+"""Tests for generation utility helpers."""
 
-from transformers import GenerationConfig
-
-from idlekv.utils.generation import greedy_generation_config
+from idlekv.utils.generation import last_token_logits_kwargs
 
 
-def test_greedy_generation_config_clears_sampling_fields():
-    model = SimpleNamespace(
-        generation_config=GenerationConfig(
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.9,
-            top_k=50,
-        )
-    )
+class _SupportsLogitsToKeep:
+    @staticmethod
+    def forward(input_ids=None, logits_to_keep=0, **kwargs):
+        return None
 
-    cleaned = greedy_generation_config(model)
 
-    assert cleaned.do_sample is False
-    assert cleaned.temperature is None
-    assert cleaned.top_p is None
-    assert cleaned.top_k is None
+class _NoLogitsToKeep:
+    @staticmethod
+    def forward(input_ids=None, **kwargs):
+        return None
 
-    # Original config should remain unchanged.
-    assert model.generation_config.do_sample is True
-    assert model.generation_config.temperature == 0.6
-    assert model.generation_config.top_p == 0.9
-    assert model.generation_config.top_k == 50
+
+def test_last_token_logits_kwargs_detects_supported_models():
+    model = _SupportsLogitsToKeep()
+    assert last_token_logits_kwargs(model) == {"logits_to_keep": 1}
+
+
+def test_last_token_logits_kwargs_is_empty_for_older_signatures():
+    model = _NoLogitsToKeep()
+    assert last_token_logits_kwargs(model) == {}

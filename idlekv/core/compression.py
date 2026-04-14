@@ -15,6 +15,7 @@ from idlekv.core.query_buffer import QueryBuffer
 from idlekv.core.phase2_refresh import FullKVStore
 from idlekv.core.scheduler import IdleScheduler, RefinementResult
 from idlekv.utils.kv_cache import get_layer_kv, set_layer_kv, num_layers
+from idlekv.utils.generation import last_token_logits_kwargs
 
 
 class CompressedKVManager:
@@ -126,6 +127,7 @@ class CompressedKVManager:
                     input_ids,
                     use_cache=True,
                     output_hidden_states=False,
+                    **last_token_logits_kwargs(self.model),
                 )
         finally:
             for hook in hooks:

@@ -1,6 +1,8 @@
-"""Helpers for deterministic generation configuration."""
+"""Helpers for deterministic generation configuration and efficient logits."""
 
 from copy import deepcopy
+from functools import lru_cache
+import inspect
 
 
 _SAMPLING_FIELDS = (
@@ -31,3 +33,25 @@ def greedy_generation_config(model):
         if hasattr(generation_config, field):
             setattr(generation_config, field, None)
     return generation_config
+
+
+@lru_cache(maxsize=None)
+def _supports_logits_to_keep(model_cls: type) -> bool:
+    """Return whether this model class accepts `logits_to_keep` in forward()."""
+    try:
+        return "logits_to_keep" in inspect.signature(model_cls.forward).parameters
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+def last_token_logits_kwargs(model) -> dict:
+    """
+    Return kwargs that restrict LM-head logits to the final token when supported.
+
+    On recent Transformers builds this avoids materializing the full
+    `[batch, seq_len, vocab]` slab during long prefills when callers only need
+    the next-token logits from the last position.
+    """
+    if _supports_logits_to_keep(type(model)):
+        return {"logits_to_keep": 1}
+    return {}

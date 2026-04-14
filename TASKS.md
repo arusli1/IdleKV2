@@ -1,6 +1,6 @@
 # IdleKV TODO List
 
-**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`41 passed`).
+**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`43 passed`).
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
@@ -17,6 +17,13 @@ Fresh handoff:
 | **Go/No-Go decision**        | `scripts/go_no_go.py` | ~10 min | Delayed-query stress gate at default `r=0.7` prints GO/MARGINAL/NO-GO |
 | **Performance verification** | —                     | ~10 min | Phase 1: target <100ms, Phase 2: verify locally on A10G |
 
+## 🔬 Current Scout Priority (~1-2 hours)
+
+- Run `configs/qwen_seed_followup.yaml` next.
+- Purpose:
+  - verify the `0ms -> 100ms` gain on the informative model across seeds
+  - determine whether the `1000ms 1+2` drop is a real Phase 2 issue or a seed-specific fluke
+- Treat this as the last critical scout before locking the larger matrix.
 
 ## 🏃‍♂️ Main Experiments (~12-30 hours total - multi-day runs)
 
@@ -89,7 +96,7 @@ Fresh handoff:
 
 ### **Quality Checklist**
 
-- `make test` passes (`41 passed`) ✅
+- `make test` passes (`43 passed`) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
 - Larger-memory expansion is reproducible from `configs/a100_scaleup.yaml`
@@ -119,4 +126,4 @@ Fresh handoff:
 - A10G memory management / CPU full-KV offload
 - GQA head mapping for Llama/Qwen
 
-**Ready to run the workshop-scale A10G sweep tonight.** Baselines cover `RULER 4K` + `LongBench`; IdleKV/ablations cover `RULER 4K`. `8K`, `sync_refresh`, and `LongBench + IdleKV` stay follow-up targets until additional decode-memory work lands.
+**Ready for one more critical scout and then a sharper larger run.** Keep the current focus on small setting-selection scouts first; broader A10G/A100 matrices should follow once the informative Qwen slice is locked.

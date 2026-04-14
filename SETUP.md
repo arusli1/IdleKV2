@@ -77,7 +77,7 @@ pip install kvpress  # Optional, for baseline comparisons
 ```bash
 # Run test suite
 make test
-# Expected output: tests should pass; current repo state is `41 passed`
+# Expected output: tests should pass; current repo state is `43 passed`
 ```
 
 ### 3.2 Test Model Access
@@ -187,6 +187,20 @@ If you move to an A100-class GPU later, use `configs/a100_scaleup.yaml` as the
 starting point rather than mutating the single-A10G default in place.
 
 ### 5.2 Run Experiments
+Start with the reduced scouts that choose the larger matrix:
+```bash
+# Two-model reduced scout
+python scripts/run_experiments.py \
+    --config configs/preliminary_idlekv.yaml \
+    --only-idlekv
+
+# Most valuable follow-up scout: Qwen seeds 123 and 456
+python scripts/run_experiments.py \
+    --config configs/qwen_seed_followup.yaml \
+    --only-idlekv
+```
+
+Then run the broader matrix:
 ```bash
 # Full experiment suite (several hours)
 make run-main

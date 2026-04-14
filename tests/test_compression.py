@@ -77,13 +77,17 @@ def test_compressed_kv_manager_init():
     assert model.config.output_hidden_states == True
 
 
-def test_prefill_compression():
+def test_prefill_compression(monkeypatch):
     """Test prefill method produces smaller cache than input."""
     model = create_mock_model()
     manager = CompressedKVManager(
         model=model,
         compression_ratio=0.5,
         offload_full_kv=False
+    )
+    monkeypatch.setattr(
+        "idlekv.core.compression.last_token_logits_kwargs",
+        lambda _: {"logits_to_keep": 1},
     )
 
     # Mock model output
@@ -94,6 +98,9 @@ def test_prefill_compression():
 
     # Run prefill
     compressed_kv = manager.prefill(input_ids)
+
+    # Prefill only needs the final next-token logits, not the full seq_len slab.
+    assert model.call_args.kwargs["logits_to_keep"] == 1
 
     # Check that compression happened
     budget = int(seq_len * (1 - manager.compression_ratio))

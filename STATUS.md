@@ -12,7 +12,7 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
   than the original long baseline-first queue for choosing the next runs.
 
 Current validated test status:
-- `42 passed`
+- `43 passed`
 
 ## What Was Validated
 
@@ -148,6 +148,8 @@ The issue is mostly VRAM peak during long decode, not basic setup mistakes.
 Already fixed:
 - prefill no longer stores full hidden-state stacks just to get the SnapKV window
 - online eviction no longer rebuilds the cache on every token by default
+- manager prefill now requests only the final token logits instead of the full
+  `[seq_len, vocab]` slab, removing an avoidable 4K-8K prefill peak
 
 Remaining limit:
 - model weights take most of the card
