@@ -11,6 +11,22 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
 - A reduced preliminary IdleKV scout is now complete and is more informative
   than the original long baseline-first queue for choosing the next runs.
 
+## Submission Target
+
+- Primary near-term target: `ICML SCALE 2026` workshop submission.
+- Preferred form: `7` content pages plus references.
+- Fallback if the broader matrix is not ready in time: `3`-page late-breaker.
+- Longer-term expansion target: `NeurIPS 2026` main-track version after a
+  broader larger-GPU matrix is measured.
+
+Critical read on evidence bar:
+- A credible `SCALE 2026` paper does not need the full aspirational matrix.
+- It does need one clean mechanism claim, one informative benchmark slice, and
+  an honest scope boundary.
+- `NeurIPS 2026` is a different bar: broader benchmarks, more models/seeds,
+  stronger systems metrics, and a cleaner final story on whether Phase 2
+  belongs at all.
+
 Current validated test status:
 - `44 passed`
 
@@ -59,6 +75,14 @@ Interpretation:
 - Phase 2 needs more scrutiny before it earns a place in the large run
 - the current `llama8b` `RULER 4K` slice should not be treated as the main
   discriminative evaluation setting
+
+Current critical read:
+- The strongest workshop-grade claim is now ``Phase 1 at 100ms helps on an
+  informative delayed-query compressed-cache slice.''
+- That is enough to anchor a `7`-page `SCALE` paper if we support it with a
+  small but coherent matrix.
+- It is not enough for a strong `NeurIPS` paper by itself, and it is not yet a
+  reason to center the story on Phase 2.
 
 Tracked snapshot:
 - `tracked_results/preliminary_idlekv/`
@@ -149,6 +173,26 @@ Scale-up config:
 Do not automatically discard the A10G results:
 - keep them as the constrained-hardware study
 - add larger-GPU runs as the expanded scale-up tier
+
+## What Is Enough For Which Paper
+
+Likely enough for a strong `SCALE 2026` `7`-page submission:
+- delayed-query pilot at `r=0.7`
+- informative Qwen scout showing `0ms -> 100ms` gain
+- one sharper follow-up matrix that locks the main setting
+- honest positioning: Phase 1 is the durable claim, Phase 2 is exploratory
+
+Possible `3`-page late-breaker package if time is tight:
+- delayed-query pilot
+- Qwen scout / follow-up only
+- one concise figure showing the short-idle gain
+- no attempt to claim the full multi-benchmark story yet
+
+Not enough for `NeurIPS 2026` main track:
+- only one informative benchmark slice
+- no broad larger-GPU IdleKV matrix yet
+- no final throughput/latency Pareto package
+- Phase 2 still unstable on the informative Qwen slice
 
 ## Why 24GB Is Tight
 

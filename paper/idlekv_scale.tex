@@ -352,7 +352,7 @@ quality reference.
 (6)~\textbf{Sync refresh}: SnapKV $r{=}0.5$ with RefreshKV-style periodic
 refresh during generation (stride~15); isolates the value of idle-time
 scheduling from the quality operations themselves in the larger-GPU scale-up
-study. In the single-A10G workshop study, the central question is whether
+study. In the single-A10G measured study, the central question is whether
 IdleKV improves over SnapKV at the same decode operating point while preserving
 throughput.
 
@@ -399,12 +399,13 @@ for the broader scale-up matrix on Llama-3.1-8B.
 The calibrated model predicts that SnapKV $r{=}0.5$ opens a 5--9 point RULER
 gap relative to full cache.
 It further predicts that Phase~1 alone recovers 1.5--3.0\% of that gap within
-100\,ms at no throughput cost. Under the same calibration, Phases~1$+$2 could
-recover a larger share of the gap between $r{=}0.5$ and $r{=}0.3$, but the
-current reduced A10G scout has only validated the robustness of Phase~1; the
-stability of longer-budget P1$+$P2 remains an explicit open question for the
-next scout and the later scale-up matrix. Sync refresh is predicted to reach
-comparable quality but at
+100\,ms at no throughput cost.
+In the current measured scope, this short-idle Phase~1 behavior is the core
+supported claim.
+Longer-budget P1$+$P2 remains exploratory: the current reduced A10G scout has
+only validated the robustness of Phase~1, and the stability of longer-budget
+P1$+$P2 remains an explicit open question for the next scout and the later
+scale-up matrix. Sync refresh is predicted to reach comparable quality but at
 ${\sim}0.75{\times}$ throughput, consistent with the hypothesis that idle-time
 scheduling---not just the underlying quality operations---is the decisive
 advantage once the scale-up baseline is fully measured.
@@ -414,9 +415,11 @@ advantage once the scale-up baseline is fully measured.
 \caption{Quality and throughput across the broader scale-up baselines (Llama-3.1-8B,
 calibrated predictions; see Section~\ref{sec:results}).
 ``LB'' $=$ LongBench average.
-\textbf{IdleKV P1$+$P2} is predicted to approach $r{=}0.3$ quality at
-$r{=}0.5$ throughput; sync refresh is predicted to match IdleKV quality at
-substantially lower throughput.}
+The short-idle Phase~1 result is the core supported claim in the current
+measured scope.
+The P1$+$P2 row remains exploratory placeholder data for the later scale-up
+study; sync refresh is predicted to match IdleKV quality at substantially
+lower throughput.}
 \label{tab:main_results}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lccc}
@@ -427,7 +430,7 @@ Full cache          & 95--96\%     & 41--43   & $1.0\times$ full   \\
 SnapKV $r{=}0.3$   & 92--94\%     & 40--41   & ${\sim}0.85\times$ r0.5 \\
 SnapKV $r{=}0.5$   & 87--90\%     & 37--39   & $1.0\times$ (ref.) \\
 +~Phase~1 only      & 89--91\%     & 38--40   & $1.0\times$        \\
-+~\textbf{P1$+$P2} & \textbf{91--93\%} & \textbf{39--41} & $\mathbf{1.0\times}$ \\
++~P1$+$P2 (exploratory) & 91--93\% & 39--41 & $1.0\times$ \\
 Sync refresh        & 91--93\%     & 39--41   & ${\sim}0.75\times$ r0.5 \\
 H2O $r{=}0.5$      & 86--88\%     & 36--38   & ${\approx}1.0\times$ \\
 StreamingLLM        & 70--74\%     & 27--30   & ${\approx}1.0\times$ \\
@@ -442,8 +445,11 @@ Table~\ref{tab:idle_budget} and Figure~\ref{fig:budget_curve} characterize
 RULER accuracy improvement as a function of idle compute budget for
 $r \in \{0.3,\,0.5,\,0.7\}$.
 The calibration predicts rapid gains in the first 100\,ms (Phase~1, token
-promotion), continued gains through 100\,ms--1\,s (Phase~2, shallow layers),
-and diminishing returns beyond 1\,s.
+promotion).
+For the current measured scope, that first-100\,ms region is the key region.
+Continued gains through 100\,ms--1\,s (Phase~2, shallow layers) remain a
+scale-up hypothesis rather than a validated core claim, and returns beyond
+1\,s are likely diminishing even if Phase~2 later stabilizes.
 More aggressive compression ratios are predicted to show larger absolute
 gains: $r{=}0.7$ recovers up to 4.3--4.7\% at a 2\,s budget compared to
 3.3--3.7\% at $r{=}0.5$, which is consistent with IdleKV's value scaling with
@@ -479,8 +485,10 @@ $r \in \{0.3,\,0.5,\,0.7\}$.
 X-axis: idle budget (ms, log scale).
 Y-axis: RULER 4K improvement over no-refinement baseline.]\vspace{1.6cm}}}
 \caption{Quality recovery as a function of idle compute budget.
-Phase~1 is predicted to dominate at ${<}100$\,ms; Phase~2 is predicted to
-deliver continued gains through 1\,s with diminishing returns thereafter.
+Phase~1 is predicted to dominate at ${<}100$\,ms and is the main supported
+claim in the current measured scope. Phase~2 may deliver continued gains
+through 1\,s, but that longer-budget behavior remains a scale-up question
+rather than a settled result here.
 Higher compression ratios are predicted to show larger absolute recoveries.}
 \label{fig:budget_curve}
 \end{figure}
@@ -492,8 +500,12 @@ methods.
 Under the calibration, IdleKV at $r{=}0.5$ appears northeast of SnapKV
 $r{=}0.5$ (higher quality, same throughput) and at the same quality level as
 SnapKV $r{=}0.3$ but with ${\sim}1.18{\times}$ the throughput.
-Sync refresh is predicted to occupy the same quality level as IdleKV P1$+$P2
-but at ${\sim}0.75{\times}$ throughput---a dominated position.
+The current measured scope only establishes the narrower claim that Phase~1
+moves the operating point northeast of the matching static compression
+baseline.
+If longer-budget P1$+$P2 later stabilizes, sync refresh is predicted to occupy
+the same quality level but at ${\sim}0.75{\times}$ throughput---a dominated
+position.
 No static compression ratio reaches the same predicted frontier position as
 IdleKV, which is consistent with the claim that idle-time scheduling is
 necessary to achieve this tradeoff.
@@ -503,12 +515,13 @@ necessary to achieve this tradeoff.
 \fbox{\parbox{0.88\columnwidth}{\centering\vspace{1.6cm}%
 \small[Figure~3: Quality-throughput Pareto frontier.
 Each point is one method.
-IdleKV P1$+$P2 is predicted to be Pareto-dominant
-over all compression-ratio variants and sync refresh.]\vspace{1.6cm}}}
+The current measured scope only requires IdleKV Phase~1 to improve quality at
+the same decode operating point; any stronger P1$+$P2 dominance remains
+exploratory.]\vspace{1.6cm}}}
 \caption{Quality-throughput Pareto frontier (Llama-3.1-8B, RULER 4K).
-\textbf{IdleKV} at $r{=}0.5$ is predicted to dominate both SnapKV $r{=}0.5$
-(same throughput, $+$1--3\% quality) and sync refresh (same quality,
-$+$33\% throughput).}
+\textbf{IdleKV Phase~1} at $r{=}0.5$ is predicted to improve on SnapKV
+$r{=}0.5$ at the same decode operating point. Any stronger claim about
+P1$+$P2 dominating sync refresh is deferred to the later scale-up study.}
 \label{fig:pareto}
 \end{figure}
 
@@ -520,6 +533,8 @@ The calibration assigns Phase~1 a consistent 1.5--3.0\% RULER gain within
 Phase~2.
 Phase~2 is then predicted to add an additional 1--2\% for the 51\% of calls
 lasting 100\,ms--1\,s.
+In the current measured scope, only the Phase~1 part of this story should be
+treated as durable until the longer-budget scout stabilizes.
 The resulting weighted gain across 74\% of tool calls is predicted to be
 2.5--3.5\% RULER accuracy---comfortably above measurement noise if validated
 empirically.
@@ -527,8 +542,9 @@ empirically.
 \begin{table}[t]
 \centering
 \caption{Phase ablation on Llama-3.1-8B RULER 4K (SnapKV $r{=}0.5$ base).
-Phase~1 is predicted to account for the majority of gains at short budgets;
-Phase~2 is predicted to provide continued improvement up to 1\,s.}
+Phase~1 is the core supported claim. Phase~2 remains exploratory until the
+long-budget scout and larger-GPU matrix confirm that it is stable and worth
+including in the main story.}
 \label{tab:ablation}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lccc}
@@ -587,12 +603,14 @@ dynamically (DynamicKV, Ada-KV) is future work.
 
 \textbf{IdleKV} is the first system to exploit GPU idle time during agentic
 tool calls for KV cache quality improvement.
-By decoupling compression from refinement, IdleKV recovers 30--50\% of the
-quality gap between aggressive and conservative compression at zero throughput
-cost---reaching $r{=}0.3$ quality at $r{=}0.5$ throughput, a frontier
-position that no static compression ratio achieves.
-The quality-vs-idle-budget curve gives practitioners a concrete tool for
-reasoning about cache quality as a function of workload characteristics.
+The measured core evidence supports a narrower but still useful claim: under
+delayed-query drift, a cheap sub-100\,ms Phase~1 refinement can
+recover part of the quality lost to aggressive compression without changing the
+decode operating point.
+That already turns idle time from wasted latency into a usable
+inference-quality budget.
+Broader claims about Phase~2, full LongBench integration, and the complete
+quality-throughput frontier remain scale-up work for the larger-GPU study.
 The general principle---using scheduled idle compute for inference quality
 improvement---extends beyond KV caches to other quality-speed tradeoffs in
 neural inference.

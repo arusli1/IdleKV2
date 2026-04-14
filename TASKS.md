@@ -7,6 +7,20 @@
 Fresh handoff:
 - read `STATUS.md` first for the current scoped run plan, validated pilot, and scale-up path
 
+## 🎯 Submission Strategy
+
+- Primary target: `ICML SCALE 2026` workshop paper.
+- Preferred package: `7` content pages plus references.
+- Fallback if the broader matrix is not ready in time: `3`-page late-breaker.
+- Longer-term target: expand the same project into a `NeurIPS 2026` main-track
+  paper after larger-GPU runs and stronger systems evidence.
+
+Critical scope rule:
+- the `SCALE` version should center on the durable claim that the current data
+  actually supports
+- do not force Phase 2 or the full aspirational matrix into the workshop story
+  unless later runs clearly rescue them
+
 ---
 
 ## 🧪 Validation (~20 min)
@@ -41,6 +55,13 @@ Fresh handoff:
 - `8K` RULER kept as explicit follow-up work, not default
 - `LongBench + IdleKV` kept as explicit follow-up work until decode-cache growth is optimized
 
+Interpretation:
+- this A10G matrix is useful for scouting and constrained-hardware evidence
+- it is not automatically the final `SCALE` paper matrix, and it is not the
+  final `NeurIPS` matrix
+- after the Qwen scout locks the informative setting, prefer a sharper
+  workshop-grade run over brute-forcing every remaining condition
+
 | Task                       | Files                          | Runtime      | Exit Criteria                                               |
 | -------------------------- | ------------------------------ | ------------ | ----------------------------------------------------------- |
 | **Full baseline suite**    | `scripts/run_experiments.py`   | ~10-18 hours | 7 default baselines × 2 models × 2 benchmarks × 3 seeds |
@@ -64,13 +85,15 @@ Fresh handoff:
 ## 📝 Paper Tasks (~3-5 days)
 
 
-| Task                            | Runtime  | Exit Criteria                           |
-| ------------------------------- | -------- | --------------------------------------- |
-| **Method section**              | ~4 hours | Architecture diagram + Algorithm boxes  |
-| **Experiment results**          | ~4 hours | Tables, figures, per-subtask analysis   |
-| **Introduction + related work** | ~4 hours | Motivation + related work table         |
-| **Mechanistic analysis**        | ~3 hours | TIR explanation + free compute analysis |
-| **Final polish**                | ~2 hours | ICML format + anonymization             |
+| Task                                | Runtime  | Exit Criteria                                                         |
+| ----------------------------------- | -------- | --------------------------------------------------------------------- |
+| **SCALE 7-page draft**              | ~1 day   | one clean workshop story centered on delayed-query + Phase 1 / 100ms |
+| **Late-breaker fallback**           | ~3 hours | compress the same evidence into 3 pages if broader runs slip         |
+| **Experiment results**              | ~4 hours | only measured tables/figures for the active submission scope         |
+| **Introduction + related work**     | ~4 hours | motivation + prior KV-cache work positioned honestly                 |
+| **Mechanistic analysis**            | ~3 hours | TIR explanation + idle-compute framing                              |
+| **NeurIPS expansion plan (later)**  | ~1 day   | broader A100 matrix and systems package defined, not necessarily run |
+| **Final polish**                    | ~2 hours | SCALE format + anonymization                                         |
 
 
 ---
@@ -90,8 +113,9 @@ Fresh handoff:
 - **Phase 2**: Tens of ms per layer plus CPU offload overhead; verify on-host
 - **Throughput**: Match SnapKV decode speed within a few percent
 - **Wall-clock**: ≤ SnapKV on realistic agentic traces
-- **Macro note**: workshop-scale evidence should center on the stable A10G
-  matrix first; LongBench+IdleKV and 8K runs are scale-up follow-up work
+- **Macro note**: the `SCALE` version should center on the best-supported
+  workshop claim first; LongBench+IdleKV, 8K, and any Phase 2-heavy story are
+  scale-up follow-up work unless later runs clearly support them
 
 ### **Long-Running Tasks**
 
@@ -131,4 +155,4 @@ Fresh handoff:
 - A10G memory management / CPU full-KV offload
 - GQA head mapping for Llama/Qwen
 
-**Ready for one more critical scout and then a sharper larger run.** Keep the current focus on small setting-selection scouts first; broader A10G/A100 matrices should follow once the informative Qwen slice is locked.
+**Ready for one more critical scout and then a sharper larger run.** Keep the current focus on small setting-selection scouts first; once the informative Qwen slice is locked, choose the smallest matrix that is strong enough for `SCALE 2026`, then save the broader `NeurIPS 2026` evidence package for the larger-GPU phase.
