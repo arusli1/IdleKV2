@@ -169,7 +169,7 @@ def simulate_agentic_workload(
                         raise RuntimeError(
                             "Query buffer is empty at idle_refine time — "
                             "hidden states must be captured during generation "
-                            "via manager.on_token_generated(hidden_state, kv) "
+                            "via manager.on_token_generated(query_state, kv) "
                             "before calling idle_refine."
                         )
                     refinement = manager.idle_refine(
@@ -278,20 +278,20 @@ def run_simulation(
         # (In practice, hook into model's last layer output)
         # For now, use the last hidden state from the model
         if outputs is not None and getattr(outputs, 'hidden_states', None) is not None:
-            last_h = outputs.hidden_states[-1][:, -1, :]
+            query_state = manager.build_query_state(outputs.hidden_states)
         else:
             # First-iter path reuses prefill logits without a new forward, so
             # no hidden state to capture here; prefill already populated the
             # KV cache, and the next iter will capture the next token's state.
-            last_h = None
+            query_state = None
 
-        if last_h is not None:
+        if query_state is not None:
             new_kv = [
                 (get_layer_kv(past_kv, l)[0][:, :, -1:, :],
                  get_layer_kv(past_kv, l)[1][:, :, -1:, :])
                 for l in range(manager.num_layers)
             ]
-            manager.on_token_generated(last_h, new_kv)
+            manager.on_token_generated(query_state, new_kv)
             # Online eviction keeps the cache bounded at budget_per_layer and
             # feeds the shadow buffer with recently-evicted middle tokens.
             past_kv = manager.maybe_evict_online(past_kv)

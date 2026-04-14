@@ -48,8 +48,7 @@ def phase1_rescore(
     Returns:
         Updated past_key_values with re-scored cache (same format as input)
     """
-    recent_h = query_buffer.get()  # [num_queries, hidden_dim]
-    if recent_h.shape[0] == 0:
+    if query_buffer.count == 0:
         return past_key_values  # nothing to score with
 
     compressed_layers = []
@@ -95,6 +94,8 @@ def phase1_rescore(
         ], dim=1)
 
         S_total = all_k.shape[1]
+
+        recent_h = query_buffer.get(layer_idx=layer_idx)  # [num_queries, hidden_dim]
 
         # Project recent hidden states through full Q projection (keeping all
         # Q heads). We score attention per-Q-head then mean across GQA groups,

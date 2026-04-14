@@ -122,7 +122,8 @@ class IdleScheduler:
         p2_layers = 0
         p2_start = time.perf_counter()
 
-        if not check() and len(self.full_kv_store) > 0:
+        phase2_allowed = max_time_ms is None or max_time_ms > 100.0
+        if phase2_allowed and not check() and len(self.full_kv_store) > 0:
             p2_ran = True
             kv, p2_layers = phase2_refresh(
                 past_key_values=kv,
@@ -147,5 +148,4 @@ class IdleScheduler:
             total_time_ms=total_time,
             was_interrupted=self._stop_event.is_set(),
         )
-
 

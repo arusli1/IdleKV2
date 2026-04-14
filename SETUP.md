@@ -108,34 +108,45 @@ print('✓ Qwen tokenizer accessible')
 ## Step 4: Quick Validation
 
 ### 4.1 Go/No-Go Check
-Test if Phase 1 refinement provides meaningful accuracy gains:
+Run the delayed-query stress gate. This compresses the context before the
+retrieval query arrives, appends a longer post-compression query/tool-style
+suffix, then gives Phase 1 a strict `100ms` idle window. That setup is
+deliberate: it creates a real query shift and online evictions, which is what
+Phase 1 is supposed to recover from.
 
 ```bash
-# Quick test (5 trials, ~5-10 minutes)
+# Quick stress test (12 trials, ~5-10 minutes)
 python scripts/go_no_go.py \
     --model meta-llama/Llama-3.1-8B-Instruct \
-    --num-trials 5 \
+    --num-trials 12
+
+# Optional: confirm that the old easier operating point is a ceiling task
+python scripts/go_no_go.py \
+    --model meta-llama/Llama-3.1-8B-Instruct \
+    --num-trials 12 \
     --ratio 0.5
 
-# More thorough test (20 trials, ~20-30 minutes)
+# More thorough stress test (20 trials, ~20-30 minutes)
 make go-no-go
 ```
 
 **Expected Output:**
 ```
-Phase 1 Refinement Results:
-========================
-Baseline accuracy: 0.756
-IdleKV accuracy:   0.782
-Delta: +2.6%
+Delayed-query stress results:
+=============================
+Full cache reference:        1.000
+Compressed baseline (r=0.7): 0.917
+IdleKV + Phase 1:            1.000
+Delta: +8.3%
+Mean Phase 1 time:           ~26ms
 
-Result: GO - Phase 1 shows meaningful improvement
+Result: GO - Phase 1 recovers delayed-query accuracy
 ```
 
 **Decision Criteria:**
-- **GO** (>1% improvement): Proceed with full experiments
-- **MARGINAL** (0.5-1% improvement): Consider proceeding but expect modest gains
-- **NO-GO** (<0.5% improvement): Debug before proceeding
+- **GO** (>=3% absolute improvement): Proceed with full experiments
+- **MARGINAL** (1-3% improvement): Proceed carefully; gains are real but modest
+- **NO-GO** (<1% improvement): Debug before proceeding
 
 ## Step 5: Full Experiments
 

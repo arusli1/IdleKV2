@@ -73,6 +73,7 @@ class CompressedKVManager:
         )
         self.query_buffer = QueryBuffer(
             buffer_size=query_buffer_size,
+            num_layers=self.num_layers,
             hidden_dim=self.hidden_dim,
             device=self.device,
             dtype=self.dtype,
@@ -120,9 +121,11 @@ class CompressedKVManager:
         # Reset buffers for new session
         self.shadow_buffer.clear()
         self.query_buffer.clear()
-        self.prefill_query_seed = outputs.hidden_states[-1][
-            0, -self.query_buffer.buffer_size:
-        ].detach().clone()
+        seed_len = min(self.query_buffer.buffer_size, seq_len)
+        self.prefill_query_seed = torch.stack([
+            outputs.hidden_states[layer_idx][0, -seed_len:, :].detach().clone()
+            for layer_idx in range(self.num_layers)
+        ], dim=1)
         # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
         self.generated_kv_lists = [[] for _ in range(self.num_layers)]
 
@@ -267,16 +270,34 @@ class CompressedKVManager:
 
         return build_cache(compressed)
 
-    def on_token_generated(self, hidden_state: torch.Tensor, new_kv_per_layer: list):
+    def build_query_state(self, hidden_states) -> Optional[torch.Tensor]:
+        """
+        Extract the per-layer hidden states that feed each transformer layer.
+
+        HF returns `hidden_states[0]` as the embedding output and
+        `hidden_states[layer_idx]` as the input to transformer layer
+        `layer_idx`. Phase 1 and Phase 2 must score each layer against its own
+        recent query states, so we keep the first `num_layers` entries.
+        """
+        if hidden_states is None:
+            return None
+
+        return torch.stack([
+            hidden_states[layer_idx][:, -1, :].squeeze(0).detach()
+            for layer_idx in range(self.num_layers)
+        ], dim=0)
+
+    def on_token_generated(self, hidden_states_by_layer: torch.Tensor, new_kv_per_layer: list):
         """
         Call after each generated token to update query buffer and track generated KV.
 
         Args:
-            hidden_state: [1, hidden_dim] last-layer hidden state
+            hidden_states_by_layer: [num_layers, hidden_dim] hidden state that
+                feeds each layer for the newly ingested/generated token
             new_kv_per_layer: list of (k, v) for the new token, one per layer
                               k shape: [1, H, 1, D]
         """
-        self.query_buffer.append(hidden_state.squeeze(0))
+        self.query_buffer.append(hidden_states_by_layer)
 
         # Fix Bug 3: Store in list to avoid O(n^2) torch.cat every step
         for layer_idx, (k, v) in enumerate(new_kv_per_layer):
@@ -344,8 +365,8 @@ class CompressedKVManager:
         if self.prefill_query_seed is None:
             return 0
 
-        for hidden_state in self.prefill_query_seed:
-            self.query_buffer.append(hidden_state)
+        for hidden_states_by_layer in self.prefill_query_seed:
+            self.query_buffer.append(hidden_states_by_layer)
         return int(self.prefill_query_seed.shape[0])
 
     def _get_generated_kv(self) -> list:

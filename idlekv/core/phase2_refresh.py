@@ -50,8 +50,7 @@ def phase2_refresh(
     Returns:
         Tuple of (updated past_key_values, layers_refreshed)
     """
-    recent_h = query_buffer.get()
-    if recent_h.shape[0] == 0:
+    if query_buffer.count == 0:
         return past_key_values, 0
 
     from idlekv.utils.kv_cache import build_cache, clone_cache
@@ -70,6 +69,7 @@ def phase2_refresh(
 
         # Load full prefill KV for this layer (CPU or GPU)
         full_k, full_v = full_kv_store.get_layer(layer_idx)
+        recent_h = query_buffer.get(layer_idx=layer_idx)
 
         # Move to device if needed (CPU->GPU transfer or no-op if already on GPU)
         if full_k.device != recent_h.device:

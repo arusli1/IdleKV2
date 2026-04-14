@@ -1,6 +1,6 @@
 # IdleKV TODO List
 
-**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (23/23 tests passing).
+**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (26/26 tests passing).
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
@@ -11,7 +11,7 @@
 
 | Task                         | Files                 | Runtime | Exit Criteria                                 |
 | ---------------------------- | --------------------- | ------- | --------------------------------------------- |
-| **Go/No-Go decision**        | `scripts/go_no_go.py` | ~10 min | Prints GO/MARGINAL/NO-GO with delta %         |
+| **Go/No-Go decision**        | `scripts/go_no_go.py` | ~10 min | Delayed-query stress gate at default `r=0.7` prints GO/MARGINAL/NO-GO |
 | **Performance verification** | —                     | ~10 min | Phase 1: target <100ms, Phase 2: verify locally on A10G |
 
 
@@ -78,7 +78,7 @@
 
 ### **Quality Checklist**
 
-- `make test` passes (23/23 tests) ✅
+- `make test` passes (26/26 tests) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
 - JSON results include: model, method, seed, metrics, timing

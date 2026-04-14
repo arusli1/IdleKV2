@@ -42,3 +42,28 @@ def test_clear():
     qb.clear()
     result = qb.get()
     assert result.shape == (0, 8)
+
+
+def test_multilayer_get_by_layer():
+    qb = QueryBuffer(buffer_size=3, num_layers=2, hidden_dim=4, device="cpu")
+
+    qb.append(torch.stack([
+        torch.full((4,), 1.0),
+        torch.full((4,), 10.0),
+    ], dim=0))
+    qb.append(torch.stack([
+        torch.full((4,), 2.0),
+        torch.full((4,), 20.0),
+    ], dim=0))
+
+    full = qb.get()
+    layer0 = qb.get(layer_idx=0)
+    layer1 = qb.get(layer_idx=1)
+
+    assert full.shape == (2, 2, 4)
+    assert layer0.shape == (2, 4)
+    assert layer1.shape == (2, 4)
+    assert layer0[0, 0].item() == 1.0
+    assert layer0[1, 0].item() == 2.0
+    assert layer1[0, 0].item() == 10.0
+    assert layer1[1, 0].item() == 20.0

@@ -67,16 +67,29 @@ def test_full_pipeline():
     # Step 2: Generate a few tokens (populates query buffer)
     with torch.no_grad():
         current_kv = compressed_kv
-        next_input = input_ids[:, -1:]
+        next_token = None
         for step in range(8):
-            outputs = model(next_input, past_key_values=current_kv, use_cache=True)
-            current_kv = outputs.past_key_values
-            next_token = outputs.logits[:, -1, :].argmax(dim=-1, keepdim=True)
-            next_input = next_token
+            if next_token is None:
+                logits = manager.last_prefill_logits
+                outputs = None
+            else:
+                outputs = model(
+                    next_token,
+                    past_key_values=current_kv,
+                    use_cache=True,
+                    output_hidden_states=True,
+                    position_ids=manager.next_position_ids(num_new_tokens=1),
+                )
+                current_kv = outputs.past_key_values
+                logits = outputs.logits[:, -1, :]
+
+            next_token = logits.argmax(dim=-1, keepdim=True)
 
             # Feed hidden states to manager if available
             if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
-                manager.on_token_generated(outputs.hidden_states[-1][:, -1, :], [])
+                query_state = manager.build_query_state(outputs.hidden_states)
+                manager.on_token_generated(query_state, [])
+                current_kv = manager.maybe_evict_online(current_kv)
 
     # Step 3: Run idle-time refinement
     result = manager.idle_refine(current_kv, max_time_ms=5000)  # generous timeout for CPU

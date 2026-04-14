@@ -125,7 +125,10 @@ def test_seed_query_buffer_from_prefill():
 
     assert seeded == 4
     buf = manager.query_buffer.get()
-    expected = mock_outputs.hidden_states[-1][0, -4:, :]
+    expected = torch.stack([
+        mock_outputs.hidden_states[layer_idx][0, -4:, :]
+        for layer_idx in range(manager.num_layers)
+    ], dim=1)
     assert torch.equal(buf, expected)
 
 
@@ -138,7 +141,7 @@ def test_on_token_generated():
     manager.generated_kv_lists = [[] for _ in range(manager.num_layers)]
 
     # Create mock hidden state and new KV
-    hidden_state = torch.randn(1, manager.hidden_dim)
+    hidden_state = torch.randn(manager.num_layers, manager.hidden_dim)
     new_kv_per_layer = []
     for layer_idx in range(manager.num_layers):
         k = torch.randn(1, manager.num_kv_heads, 1, manager.head_dim)
@@ -147,6 +150,10 @@ def test_on_token_generated():
 
     # Track token generation
     manager.on_token_generated(hidden_state, new_kv_per_layer)
+
+    query_state = manager.query_buffer.get()
+    assert query_state.shape == (1, manager.num_layers, manager.hidden_dim)
+    assert torch.equal(query_state[0], hidden_state)
 
     # Check that KV was stored in lists (avoiding O(n^2) concatenation)
     for layer_idx in range(manager.num_layers):
@@ -233,7 +240,7 @@ def test_semantic_seq_len_tracking():
 
     # Simulate 3 generated tokens
     for _ in range(3):
-        h = torch.randn(1, manager.hidden_dim)
+        h = torch.randn(manager.num_layers, manager.hidden_dim)
         kv = [(torch.randn(1, manager.num_kv_heads, 1, manager.head_dim),
                torch.randn(1, manager.num_kv_heads, 1, manager.head_dim))
               for _ in range(manager.num_layers)]

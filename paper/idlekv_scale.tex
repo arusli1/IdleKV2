@@ -187,14 +187,14 @@ The CPU backup is updated after each tool-result prefill.}
 \label{fig:architecture}
 \end{figure}
 
-\subsection{Phase 1: TIR-Informed Re-scoring ($<$100\,ms)}
+\subsection{Phase 1: TIR-Informed Re-scoring ($\leq$100\,ms)}
 \label{sec:phase1}
 
 \citet{lazyeviction2025} establish that $>$95\% of evicted tokens exhibit
 Token Importance Recurrence: a token unimportant at eviction time can become
 critical as queries evolve.
 Phase~1 exploits this by re-evaluating recently evicted tokens against
-recent queries.
+recent per-layer queries.
 For each layer $\ell$ and head $h$, we maintain a shadow buffer $S_\ell$
 of the 256 most recently evicted KV pairs.
 Algorithm~\ref{alg:phase1} details the procedure.
@@ -204,7 +204,7 @@ Algorithm~\ref{alg:phase1} details the procedure.
 \label{alg:phase1}
 \begin{algorithmic}[1]
 \REQUIRE Retained cache $R_\ell$, shadow buffer $S_\ell$,
-         recent queries $Q_{t-W+1:t}$ (window $W{=}32$)
+         recent per-layer queries $Q_{t-W+1:t}^{(\ell)}$ (window $W{=}32$)
 \ENSURE Updated retained cache $R'_\ell$, updated shadow buffer $S'_\ell$
 \FOR{each layer $\ell = 1, \ldots, L$}
   \FOR{each head $h$}
@@ -218,6 +218,13 @@ Algorithm~\ref{alg:phase1} details the procedure.
 \ENDFOR
 \end{algorithmic}
 \end{algorithm}
+
+\textbf{Implementation detail.}
+We store the hidden state feeding each layer for the last $W{=}32$ generated
+or newly ingested tokens, then project those states through each layer's own
+$q$-projection at re-scoring time. This matches the layer-local query geometry
+used during prefill compression and avoids reusing a single final-layer state
+across all layers.
 
 \textbf{Complexity.}
 $O(d \cdot |S_\ell| \cdot H \cdot L)$ total, with $|S_\ell|{=}256$, $H$
@@ -277,7 +284,7 @@ it entirely out of the generation critical path.
 
 Table~\ref{tab:memory} summarizes IdleKV's memory footprint over the SnapKV
 baseline.
-Total GPU overhead is 80\,MB (${\approx}0.3\%$ of a 24\,GB A10G).
+Total GPU overhead is 40\,MB (${\approx}0.2\%$ of a 24\,GB A10G).
 CPU backup for a 4K context requires ${\approx}$512\,MB.
 We verify that decode throughput with and without shadow buffer hooks differs
 by ${<}2\%$ (not statistically significant at $n{=}3$ seeds), consistent with
@@ -288,18 +295,18 @@ periods by construction.
 \begin{table}[t]
 \centering
 \caption{Memory overhead of \textbf{IdleKV} over SnapKV baseline.
-GPU overhead is ${\approx}0.3\%$ of a 24\,GB A10G.}
+GPU overhead is ${\approx}0.2\%$ of a 24\,GB A10G.}
 \label{tab:memory}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lcc}
 \toprule
 Component & GPU (MB) & CPU (MB) \\
 \midrule
-Shadow buffer ($256{\times}L{\times}H{\times}d$) & 64  & ---  \\
-Query buffer  ($32{\times}L{\times}H{\times}d$)  & 16  & ---  \\
+Shadow buffer ($256{\times}L{\times}H_{\mathrm{kv}}{\times}d$) & 32  & ---  \\
+Query buffer  ($32{\times}L{\times}d_{\mathrm{model}}$)        & 8   & ---  \\
 Full KV backup (4K ctx)                           & --- & 512  \\
 \midrule
-Total overhead & \textbf{80} & \textbf{512} \\
+Total overhead & \textbf{40} & \textbf{512} \\
 \bottomrule
 \end{tabular}%
 }

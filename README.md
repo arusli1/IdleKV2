@@ -27,10 +27,19 @@ pytest tests/ -v  # Should pass on GPU too
 ## Running Experiments
 
 ### Step 1: Go/No-Go Check (< 10 min)
-Test if Phase 1 refinement provides meaningful accuracy gains:
+Run the delayed-query stress gate. It compresses the ledger first, then feeds a
+post-compression query suffix and gives Phase 1 a strict 100ms idle window.
+This is a real TIR check; the old "question already in prefill" toy setup was a
+ceiling task on Llama-8B.
 ```bash
-python scripts/go_no_go.py --model meta-llama/Llama-3.1-8B-Instruct --num-trials 5
+python scripts/go_no_go.py \
+  --model meta-llama/Llama-3.1-8B-Instruct \
+  --num-trials 12
 ```
+
+The script defaults to `--ratio 0.7` because this synthetic gate typically
+stays at ceiling for `r=0.5`. Main experiments should still sweep the planned
+compression ratios.
 
 ### Step 2: Full Experiment Suite
 Run incremental subsets:
