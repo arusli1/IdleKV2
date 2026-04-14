@@ -40,6 +40,8 @@ python scripts/go_no_go.py \
 The script defaults to `--ratio 0.7` because this synthetic gate typically
 stays at ceiling for `r=0.5`. Main experiments should still sweep the planned
 compression ratios.
+Treat this gate as a mechanism check for delayed-query recovery, not as a
+substitute for the full RULER/LongBench experiment suite.
 
 ### Step 2: Full Experiment Suite
 Run incremental subsets:

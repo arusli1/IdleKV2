@@ -18,7 +18,7 @@ format:
 go-no-go:
 	python scripts/go_no_go.py \
 		--model meta-llama/Llama-3.1-8B-Instruct \
-		--ratio 0.5 \
+		--ratio 0.7 \
 		--num-trials 20
 
 # Full experiment suite

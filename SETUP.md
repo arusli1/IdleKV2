@@ -132,21 +132,24 @@ make go-no-go
 
 **Expected Output:**
 ```
-Delayed-query stress results:
-=============================
-Full cache reference:        1.000
-Compressed baseline (r=0.7): 0.917
-IdleKV + Phase 1:            1.000
-Delta: +8.3%
-Mean Phase 1 time:           ~26ms
+=== RESULTS ===
+Full cache reference:              100.0%
+Compressed baseline (r=0.7):      91.7%
+IdleKV + Phase 1:                 100.0%
+Delta:                            +8.3%
+Mean Phase 1 time:                27.4ms
 
-Result: GO - Phase 1 recovers delayed-query accuracy
+✅ GO: Phase 1 shows a meaningful recovery gain on the delayed-query gate.
 ```
 
 **Decision Criteria:**
 - **GO** (>=3% absolute improvement): Proceed with full experiments
 - **MARGINAL** (1-3% improvement): Proceed carefully; gains are real but modest
 - **NO-GO** (<1% improvement): Debug before proceeding
+
+This gate is a mechanism-level check for delayed-query recovery. It is not a
+replacement for the full RULER/LongBench sweeps used to support broader paper
+claims.
 
 ## Step 5: Full Experiments
 

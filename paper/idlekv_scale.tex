@@ -52,11 +52,11 @@ We propose \textbf{IdleKV}, a two-phase idle-time refinement system that
 performs TIR-informed token re-scoring ($<$100\,ms) and progressive
 full-attention layer refresh (100\,ms--2\,s) during tool-call pauses,
 wrapping any attention-based compression method.
-On RULER and LongBench with Llama-3.1-8B at $2\times$ compression
-(SnapKV $r{=}0.5$), IdleKV recovers 30--50\% of the quality gap relative to
-less aggressive compression ($r{=}0.3$) while maintaining $r{=}0.5$ decode
-throughput---a point on the quality-throughput frontier that no static
-compression ratio achieves.
+In calibrated projections for RULER and LongBench with Llama-3.1-8B at
+$2\times$ compression (SnapKV $r{=}0.5$), IdleKV recovers 30--50\% of the
+quality gap relative to less aggressive compression ($r{=}0.3$) while
+maintaining $r{=}0.5$ decode throughput---a projected point on the
+quality-throughput frontier that no static compression ratio achieves.
 \end{abstract}
 
 % ---------------------------------------------------------------
@@ -126,28 +126,31 @@ Neither phase adds overhead to the generation critical path.
 \textbf{Contributions:}
 \begin{itemize}
 \item \textbf{IdleKV, a two-phase idle-time refinement system.}
-  IdleKV recovers 30--50\% of the quality gap between SnapKV $r{=}0.5$ and
-  $r{=}0.3$ on RULER and LongBench, wrapping any attention-based compression
-  method with ${<}2\%$ measured decode throughput overhead.
+  In our current calibrated analysis, IdleKV recovers 30--50\% of the quality
+  gap between SnapKV $r{=}0.5$ and $r{=}0.3$ on RULER and LongBench, wrapping
+  any attention-based compression method with ${<}2\%$ measured decode
+  throughput overhead.
 \item \textbf{Quality-vs-idle-budget curve.}
-  IdleKV produces the first characterization of recoverable cache quality as a
+  IdleKV motivates a first characterization of recoverable cache quality as a
   function of available free compute, across compression ratios
   $r \in \{0.3,\,0.5,\,0.7\}$ and two model families, giving practitioners a
-  concrete tool for capacity planning in agentic deployments.
+  concrete tool for capacity planning in agentic deployments once the
+  benchmark sweep is finalized.
 \item \textbf{Extended quality-throughput Pareto frontier.}
-  IdleKV at $r{=}0.5$ occupies a frontier position---$r{=}0.3$ quality at
-  $r{=}0.5$ throughput---that no static compression ratio and no
-  synchronous recovery method achieves simultaneously.
+  In the calibrated frontier analysis, IdleKV at $r{=}0.5$ occupies a
+  frontier position---$r{=}0.3$ quality at $r{=}0.5$ throughput---that no
+  static compression ratio and no synchronous recovery method achieves
+  simultaneously.
 \end{itemize}
 
 A natural question is whether less aggressive compression achieves the same
 quality without the complexity of idle-time refinement.
 IdleKV directly addresses this: SnapKV $r{=}0.3$ is an explicit Pareto
-baseline, and Section~\ref{sec:results} shows that IdleKV at $r{=}0.5$
+baseline, and Section~\ref{sec:results} predicts that IdleKV at $r{=}0.5$
 approaches $r{=}0.3$ quality while maintaining $r{=}0.5$ decode throughput.
-Synchronous refresh (RefreshKV-style) achieves comparable quality but at
-${\sim}0.75{\times}$ throughput---also dominated by IdleKV on the Pareto
-frontier.
+Synchronous refresh (RefreshKV-style) is likewise predicted to achieve
+comparable quality but at ${\sim}0.75{\times}$ throughput, leaving IdleKV in
+the stronger projected Pareto position.
 
 % ---------------------------------------------------------------
 %  2. Method
@@ -384,24 +387,26 @@ and confidence intervals will replace the current ranges in the final version.
 
 Table~\ref{tab:main_results} presents quality and throughput across all
 baselines on Llama-3.1-8B.
-SnapKV $r{=}0.5$ opens a 5--9 point RULER gap relative to full cache.
-Phase~1 alone recovers 1.5--3.0\% of that gap within 100\,ms at no throughput
-cost.
-Phases~1$+$2 together recover 30--50\% of the gap between $r{=}0.5$ and
-$r{=}0.3$, reaching \textbf{91--93\%} RULER accuracy at $r{=}0.5$ decode
-throughput.
-Sync refresh reaches comparable quality but at ${\sim}0.75{\times}$ throughput,
-confirming that idle-time scheduling---not the underlying quality
-operations---is the decisive advantage.
+The calibrated model predicts that SnapKV $r{=}0.5$ opens a 5--9 point RULER
+gap relative to full cache.
+It further predicts that Phase~1 alone recovers 1.5--3.0\% of that gap within
+100\,ms at no throughput cost.
+Under the same calibration, Phases~1$+$2 together recover 30--50\% of the gap
+between $r{=}0.5$ and $r{=}0.3$, reaching \textbf{91--93\%} RULER accuracy at
+$r{=}0.5$ decode throughput.
+Sync refresh is predicted to reach comparable quality but at
+${\sim}0.75{\times}$ throughput, consistent with the hypothesis that idle-time
+scheduling---not just the underlying quality operations---is the decisive
+advantage.
 
 \begin{table}[t]
 \centering
 \caption{Quality and throughput across baselines (Llama-3.1-8B,
 calibrated predictions; see Section~\ref{sec:results}).
 ``LB'' $=$ LongBench average.
-\textbf{IdleKV P1$+$P2} approaches $r{=}0.3$ quality at $r{=}0.5$
-throughput; sync refresh matches IdleKV quality at substantially lower
-throughput.}
+\textbf{IdleKV P1$+$P2} is predicted to approach $r{=}0.3$ quality at
+$r{=}0.5$ throughput; sync refresh is predicted to match IdleKV quality at
+substantially lower throughput.}
 \label{tab:main_results}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lccc}
@@ -426,16 +431,16 @@ StreamingLLM        & 70--74\%     & 27--30   & ${\approx}1.0\times$ \\
 Table~\ref{tab:idle_budget} and Figure~\ref{fig:budget_curve} characterize
 RULER accuracy improvement as a function of idle compute budget for
 $r \in \{0.3,\,0.5,\,0.7\}$.
-We observe rapid gains in the first 100\,ms (Phase~1, token promotion),
-continued gains through 100\,ms--1\,s (Phase~2, shallow layers), and
-diminishing returns beyond 1\,s.
-More aggressive compression ratios show larger absolute gains: $r{=}0.7$
-recovers up to 4.3--4.7\% at a 2\,s budget compared to 3.3--3.7\% at
-$r{=}0.5$, confirming that IdleKV's value scales with the severity of the
-quality-throughput tradeoff.
-Across SWE-Bench trace distributions, 74\% of tool calls provide at least
-100\,ms of idle budget, covering the full two-phase refinement for the majority
-of agentic interactions.
+The calibration predicts rapid gains in the first 100\,ms (Phase~1, token
+promotion), continued gains through 100\,ms--1\,s (Phase~2, shallow layers),
+and diminishing returns beyond 1\,s.
+More aggressive compression ratios are predicted to show larger absolute
+gains: $r{=}0.7$ recovers up to 4.3--4.7\% at a 2\,s budget compared to
+3.3--3.7\% at $r{=}0.5$, which is consistent with IdleKV's value scaling with
+the severity of the quality-throughput tradeoff.
+Across SWE-Bench trace distributions, 74\% of tool calls are expected to
+provide at least 100\,ms of idle budget, covering the full two-phase
+refinement for the majority of agentic interactions.
 
 \begin{table}[t]
 \centering
@@ -464,9 +469,9 @@ $r \in \{0.3,\,0.5,\,0.7\}$.
 X-axis: idle budget (ms, log scale).
 Y-axis: RULER 4K improvement over no-refinement baseline.]\vspace{1.6cm}}}
 \caption{Quality recovery as a function of idle compute budget.
-Phase~1 dominates at ${<}100$\,ms; Phase~2 delivers continued gains through
-1\,s with diminishing returns thereafter.
-Higher compression ratios show larger absolute recoveries.}
+Phase~1 is predicted to dominate at ${<}100$\,ms; Phase~2 is predicted to
+deliver continued gains through 1\,s with diminishing returns thereafter.
+Higher compression ratios are predicted to show larger absolute recoveries.}
 \label{fig:budget_curve}
 \end{figure}
 
@@ -474,13 +479,14 @@ Higher compression ratios show larger absolute recoveries.}
 
 Figure~\ref{fig:pareto} plots RULER 4K accuracy vs.\ decode throughput for all
 methods.
-IdleKV at $r{=}0.5$ appears northeast of SnapKV $r{=}0.5$ (higher quality,
-same throughput) and at the same quality level as SnapKV $r{=}0.3$ but with
-${\sim}1.18{\times}$ the throughput.
-Sync refresh occupies the same quality level as IdleKV P1$+$P2 but at
-${\sim}0.75{\times}$ throughput---a dominated position.
-No static compression ratio occupies the same frontier position as IdleKV,
-confirming that idle-time scheduling is necessary to achieve this tradeoff.
+Under the calibration, IdleKV at $r{=}0.5$ appears northeast of SnapKV
+$r{=}0.5$ (higher quality, same throughput) and at the same quality level as
+SnapKV $r{=}0.3$ but with ${\sim}1.18{\times}$ the throughput.
+Sync refresh is predicted to occupy the same quality level as IdleKV P1$+$P2
+but at ${\sim}0.75{\times}$ throughput---a dominated position.
+No static compression ratio reaches the same predicted frontier position as
+IdleKV, which is consistent with the claim that idle-time scheduling is
+necessary to achieve this tradeoff.
 
 \begin{figure}[t]
 \centering
@@ -490,25 +496,29 @@ Each point is one method.
 IdleKV P1$+$P2 is predicted to be Pareto-dominant
 over all compression-ratio variants and sync refresh.]\vspace{1.6cm}}}
 \caption{Quality-throughput Pareto frontier (Llama-3.1-8B, RULER 4K).
-\textbf{IdleKV} at $r{=}0.5$ dominates both SnapKV $r{=}0.5$ (same throughput,
-$+$1--3\% quality) and sync refresh (same quality, $+$33\% throughput).}
+\textbf{IdleKV} at $r{=}0.5$ is predicted to dominate both SnapKV $r{=}0.5$
+(same throughput, $+$1--3\% quality) and sync refresh (same quality,
+$+$33\% throughput).}
 \label{fig:pareto}
 \end{figure}
 
 \subsection{Ablation: Phase Contribution and Cross-Model Generalization}
 
 Table~\ref{tab:ablation} isolates Phase~1 and Phase~2 contributions.
-Phase~1 delivers consistent 1.5--3.0\% RULER gains within 100\,ms and covers
-23\% of SWE-Bench tool calls too short for Phase~2.
-Phase~2 adds an additional 1--2\% for the 51\% of calls lasting 100\,ms--1\,s.
-The weighted gain across 74\% of tool calls is 2.5--3.5\% RULER
-accuracy---comfortably above measurement noise.
+The calibration assigns Phase~1 a consistent 1.5--3.0\% RULER gain within
+100\,ms and coverage for 23\% of SWE-Bench tool calls that are too short for
+Phase~2.
+Phase~2 is then predicted to add an additional 1--2\% for the 51\% of calls
+lasting 100\,ms--1\,s.
+The resulting weighted gain across 74\% of tool calls is predicted to be
+2.5--3.5\% RULER accuracy---comfortably above measurement noise if validated
+empirically.
 
 \begin{table}[t]
 \centering
 \caption{Phase ablation on Llama-3.1-8B RULER 4K (SnapKV $r{=}0.5$ base).
-Phase~1 accounts for the majority of gains at short budgets; Phase~2 provides
-continued improvement up to 1\,s.}
+Phase~1 is predicted to account for the majority of gains at short budgets;
+Phase~2 is predicted to provide continued improvement up to 1\,s.}
 \label{tab:ablation}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lccc}

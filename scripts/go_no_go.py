@@ -165,13 +165,14 @@ def ingest_suffix(model, manager, past_key_values, suffix_ids: torch.Tensor):
     decode-time ingestion.
     """
     num_suffix_tokens = suffix_ids.shape[1]
-    outputs = model(
-        input_ids=suffix_ids,
-        past_key_values=past_key_values,
-        position_ids=manager.next_position_ids(num_new_tokens=num_suffix_tokens),
-        use_cache=True,
-        output_hidden_states=True,
-    )
+    with torch.inference_mode():
+        outputs = model(
+            input_ids=suffix_ids,
+            past_key_values=past_key_values,
+            position_ids=manager.next_position_ids(num_new_tokens=num_suffix_tokens),
+            use_cache=True,
+            output_hidden_states=True,
+        )
     current_past_kv = outputs.past_key_values
     total_seq = get_layer_kv(current_past_kv, 0)[0].shape[2]
 
@@ -320,6 +321,208 @@ def evaluate_full_cache(model, tokenizer, trial: DelayedQueryTrial):
     }
 
 
+def load_model_for_gate(model_name: str, device: str):
+    """
+    Load the pilot model fully onto the requested device.
+
+    The delayed-query gate is meant to validate Phase 1 on a single A10G-class
+    GPU. Allowing HF `device_map="auto"` to spill weights to CPU/disk makes the
+    pilot dramatically slower and can distort the intended operating point, so
+    we fail fast instead of silently running an offloaded configuration.
+    """
+    if device == "cpu":
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            dtype=torch.float32,
+            low_cpu_mem_usage=True,
+        )
+        model.eval()
+        return model
+
+    torch.cuda.empty_cache()
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        dtype=torch.float16,
+        attn_implementation="sdpa",
+        low_cpu_mem_usage=True,
+        device_map={"": 0},
+    )
+    model.eval()
+
+    param_device = next(model.parameters()).device
+    if param_device.type != "cuda":
+        raise RuntimeError(
+            f"Expected pilot model to reside on {device}, got {param_device}."
+        )
+
+    return model
+
+
+def run_gate(
+    model,
+    tokenizer,
+    *,
+    model_name: str,
+    device: str,
+    ratio: float,
+    context_length: int,
+    num_trials: int,
+    num_records: int,
+    target_depth: float,
+    suffix_repeats: int,
+    shadow_size: int,
+    skip_full_cache_ref: bool = False,
+    emit_logs: bool = True,
+):
+    if emit_logs:
+        print("Warming up delayed-query path...")
+    warmup_trial = create_delayed_query_trial(
+        tokenizer=tokenizer,
+        trial_idx=-1,
+        context_length=context_length,
+        num_records=num_records,
+        target_depth=target_depth,
+        suffix_repeats=suffix_repeats,
+        device=device,
+    )
+    _ = evaluate_with_compression(
+        model=model,
+        tokenizer=tokenizer,
+        trial=warmup_trial,
+        compression_ratio=ratio,
+        shadow_size=shadow_size,
+        run_phase1=True,
+    )
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+    if emit_logs:
+        print("Warmup complete.\n")
+
+    full_cache_correct = 0
+    baseline_correct = 0
+    idlekv_correct = 0
+    phase1_times = []
+    per_trial = []
+
+    for trial_idx in range(num_trials):
+        trial = create_delayed_query_trial(
+            tokenizer=tokenizer,
+            trial_idx=trial_idx,
+            context_length=context_length,
+            num_records=num_records,
+            target_depth=target_depth,
+            suffix_repeats=suffix_repeats,
+            device=device,
+        )
+
+        full_ref = None
+        if not skip_full_cache_ref:
+            full_ref = evaluate_full_cache(model, tokenizer, trial)
+            full_cache_correct += int(full_ref["correct"])
+            if device == "cuda":
+                torch.cuda.empty_cache()
+            gc.collect()
+
+        baseline = evaluate_with_compression(
+            model=model,
+            tokenizer=tokenizer,
+            trial=trial,
+            compression_ratio=ratio,
+            shadow_size=0,
+            run_phase1=False,
+        )
+        baseline_correct += int(baseline["correct"])
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
+
+        idlekv = evaluate_with_compression(
+            model=model,
+            tokenizer=tokenizer,
+            trial=trial,
+            compression_ratio=ratio,
+            shadow_size=shadow_size,
+            run_phase1=True,
+        )
+        idlekv_correct += int(idlekv["correct"])
+        phase1_times.append(idlekv["phase1_time_ms"])
+
+        trial_result = {
+            "trial_idx": trial_idx,
+            "target_name": trial.target_name,
+            "full_correct": full_ref["correct"] if full_ref is not None else None,
+            "baseline_correct": baseline["correct"],
+            "idlekv_correct": idlekv["correct"],
+            "phase1_time_ms": idlekv["phase1_time_ms"],
+        }
+        per_trial.append(trial_result)
+
+        if emit_logs:
+            full_symbol = "✓" if skip_full_cache_ref or full_ref["correct"] else "✗"
+            print(
+                f"  Trial {trial_idx + 1}/{num_trials}: "
+                f"target={trial.target_name:<8} "
+                f"| full={full_symbol} "
+                f"| baseline={'✓' if baseline['correct'] else '✗'} "
+                f"| idlekv={'✓' if idlekv['correct'] else '✗'} "
+                f"| p1={idlekv['phase1_time_ms']:.1f}ms"
+            )
+
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    full_cache_acc = (
+        full_cache_correct / num_trials * 100
+        if not skip_full_cache_ref else None
+    )
+    baseline_acc = baseline_correct / num_trials * 100
+    idlekv_acc = idlekv_correct / num_trials * 100
+    delta = idlekv_acc - baseline_acc
+    mean_phase1_ms = sum(phase1_times) / len(phase1_times) if phase1_times else 0.0
+    decision = "GO" if delta >= 3 else "MARGINAL" if delta >= 1 else "NO-GO"
+
+    results = {
+        "benchmark": "delayed_query_stress",
+        "model": model_name,
+        "ratio": ratio,
+        "context_length": context_length,
+        "num_trials": num_trials,
+        "num_records": num_records,
+        "target_depth": target_depth,
+        "suffix_repeats": suffix_repeats,
+        "shadow_size": shadow_size,
+        "full_cache_acc": full_cache_acc,
+        "baseline_acc": baseline_acc,
+        "idlekv_acc": idlekv_acc,
+        "delta": delta,
+        "mean_phase1_ms": mean_phase1_ms,
+        "decision": decision,
+        "per_trial": per_trial,
+    }
+
+    if emit_logs:
+        print()
+        print("=== RESULTS ===")
+        if full_cache_acc is not None:
+            print(f"Full cache reference:              {full_cache_acc:.1f}%")
+        print(f"Compressed baseline (r={ratio}):     {baseline_acc:.1f}%")
+        print(f"IdleKV + Phase 1:                 {idlekv_acc:.1f}%")
+        print(f"Delta:                            {delta:+.1f}%")
+        print(f"Mean Phase 1 time:                {mean_phase1_ms:.1f}ms")
+        print()
+
+        if decision == "GO":
+            print("✅ GO: Phase 1 shows a meaningful recovery gain on the delayed-query gate.")
+        elif decision == "MARGINAL":
+            print("⚠️  MARGINAL: Phase 1 helps, but the gain is modest on this gate.")
+        else:
+            print("❌ NO-GO: Phase 1 fails to recover enough accuracy on the delayed-query gate.")
+
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B-Instruct")
@@ -375,141 +578,30 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map="auto" if device == "cuda" else "cpu",
-        attn_implementation="sdpa" if device == "cuda" else None,
-    )
-    model.eval()
+    model = load_model_for_gate(args.model, device)
+    if device == "cuda":
+        allocated_gb = torch.cuda.memory_allocated() / (1024 ** 3)
+        reserved_gb = torch.cuda.memory_reserved() / (1024 ** 3)
+        print(
+            f"Model loaded on {device}: "
+            f"allocated={allocated_gb:.1f}GB reserved={reserved_gb:.1f}GB"
+        )
 
-    print("Warming up delayed-query path...")
-    warmup_trial = create_delayed_query_trial(
+    results = run_gate(
+        model=model,
         tokenizer=tokenizer,
-        trial_idx=-1,
+        model_name=args.model,
+        device=device,
+        ratio=args.ratio,
         context_length=args.context_length,
+        num_trials=args.num_trials,
         num_records=args.num_records,
         target_depth=args.target_depth,
         suffix_repeats=args.suffix_repeats,
-        device=device,
-    )
-    _ = evaluate_with_compression(
-        model=model,
-        tokenizer=tokenizer,
-        trial=warmup_trial,
-        compression_ratio=args.ratio,
         shadow_size=args.shadow_size,
-        run_phase1=True,
+        skip_full_cache_ref=args.skip_full_cache_ref,
+        emit_logs=True,
     )
-    if device == "cuda":
-        torch.cuda.empty_cache()
-    gc.collect()
-    print("Warmup complete.\n")
-
-    full_cache_correct = 0
-    baseline_correct = 0
-    idlekv_correct = 0
-    phase1_times = []
-
-    for trial_idx in range(args.num_trials):
-        trial = create_delayed_query_trial(
-            tokenizer=tokenizer,
-            trial_idx=trial_idx,
-            context_length=args.context_length,
-            num_records=args.num_records,
-            target_depth=args.target_depth,
-            suffix_repeats=args.suffix_repeats,
-            device=device,
-        )
-
-        if not args.skip_full_cache_ref:
-            full_ref = evaluate_full_cache(model, tokenizer, trial)
-            full_cache_correct += int(full_ref["correct"])
-            if device == "cuda":
-                torch.cuda.empty_cache()
-            gc.collect()
-
-        baseline = evaluate_with_compression(
-            model=model,
-            tokenizer=tokenizer,
-            trial=trial,
-            compression_ratio=args.ratio,
-            shadow_size=0,
-            run_phase1=False,
-        )
-        baseline_correct += int(baseline["correct"])
-        if device == "cuda":
-            torch.cuda.empty_cache()
-        gc.collect()
-
-        idlekv = evaluate_with_compression(
-            model=model,
-            tokenizer=tokenizer,
-            trial=trial,
-            compression_ratio=args.ratio,
-            shadow_size=args.shadow_size,
-            run_phase1=True,
-        )
-        idlekv_correct += int(idlekv["correct"])
-        phase1_times.append(idlekv["phase1_time_ms"])
-
-        full_symbol = "✓" if args.skip_full_cache_ref or full_ref["correct"] else "✗"
-        print(
-            f"  Trial {trial_idx + 1}/{args.num_trials}: "
-            f"target={trial.target_name:<8} "
-            f"| full={full_symbol} "
-            f"| baseline={'✓' if baseline['correct'] else '✗'} "
-            f"| idlekv={'✓' if idlekv['correct'] else '✗'} "
-            f"| p1={idlekv['phase1_time_ms']:.1f}ms"
-        )
-
-        if device == "cuda":
-            torch.cuda.empty_cache()
-        gc.collect()
-
-    full_cache_acc = (
-        full_cache_correct / args.num_trials * 100
-        if not args.skip_full_cache_ref else None
-    )
-    baseline_acc = baseline_correct / args.num_trials * 100
-    idlekv_acc = idlekv_correct / args.num_trials * 100
-    delta = idlekv_acc - baseline_acc
-    mean_phase1_ms = sum(phase1_times) / len(phase1_times) if phase1_times else 0.0
-
-    print()
-    print("=== RESULTS ===")
-    if full_cache_acc is not None:
-        print(f"Full cache reference:              {full_cache_acc:.1f}%")
-    print(f"Compressed baseline (r={args.ratio}):     {baseline_acc:.1f}%")
-    print(f"IdleKV + Phase 1:                 {idlekv_acc:.1f}%")
-    print(f"Delta:                            {delta:+.1f}%")
-    print(f"Mean Phase 1 time:                {mean_phase1_ms:.1f}ms")
-    print()
-
-    if delta >= 3.0:
-        print("✅ GO: Phase 1 shows a meaningful recovery gain on the delayed-query gate.")
-    elif delta >= 1.0:
-        print("⚠️  MARGINAL: Phase 1 helps, but the gain is modest on this gate.")
-    else:
-        print("❌ NO-GO: Phase 1 fails to recover enough accuracy on the delayed-query gate.")
-
-    results = {
-        "benchmark": "delayed_query_stress",
-        "model": args.model,
-        "ratio": args.ratio,
-        "context_length": args.context_length,
-        "num_trials": args.num_trials,
-        "num_records": args.num_records,
-        "target_depth": args.target_depth,
-        "suffix_repeats": args.suffix_repeats,
-        "shadow_size": args.shadow_size,
-        "full_cache_acc": full_cache_acc,
-        "baseline_acc": baseline_acc,
-        "idlekv_acc": idlekv_acc,
-        "delta": delta,
-        "mean_phase1_ms": mean_phase1_ms,
-        "decision": "GO" if delta >= 3 else "MARGINAL" if delta >= 1 else "NO-GO",
-    }
     outpath = Path("results/go_no_go.json")
     outpath.parent.mkdir(parents=True, exist_ok=True)
     with open(outpath, "w") as f:
