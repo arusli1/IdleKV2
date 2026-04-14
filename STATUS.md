@@ -8,9 +8,11 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
 - The delayed-query pilot is validated.
 - The experiment runner is real and resumable; it is no longer a mock scaffold.
 - The repo is intentionally scoped to a stable single-A10G workshop-scale matrix.
+- A reduced preliminary IdleKV scout is now complete and is more informative
+  than the original long baseline-first queue for choosing the next runs.
 
 Current validated test status:
-- `41 passed`
+- `42 passed`
 
 ## What Was Validated
 
@@ -27,6 +29,49 @@ Mechanism-level pilot:
 Interpretation:
 - The hypothesis looks real when the query arrives after compression and the task is hard enough to create recoverable damage.
 - `r=0.5` is mostly a ceiling sanity check on this synthetic pilot.
+
+## Preliminary IdleKV Scout
+
+Finished reduced scout:
+- config: `configs/preliminary_idlekv.yaml`
+- scope:
+  - `llama8b`, `qwen7b`
+  - seed `42`
+  - `RULER 4K`
+  - `r=0.7`
+  - budgets `0`, `100`, `1000 ms`
+  - phases `1`, `1+2`
+
+Headline read:
+- `llama8b`
+  - all conditions at `100%`
+  - this slice is ceiling and not useful for tuning
+- `qwen7b`
+  - `0ms`: `0.86`
+  - `100ms`: `0.90`
+  - `1000ms phase=1`: `0.90`
+  - `1000ms phase=1+2`: `0.667`
+
+Interpretation:
+- `qwen7b` is the informative tuning model on the current `RULER 4K` slice
+- `100ms` is a credible short-idle operating point
+- Phase 1 is carrying the useful signal
+- Phase 2 needs more scrutiny before it earns a place in the large run
+- the current `llama8b` `RULER 4K` slice should not be treated as the main
+  discriminative evaluation setting
+
+Tracked snapshot:
+- `tracked_results/preliminary_idlekv/`
+
+Recommended next small scout:
+- `configs/qwen_seed_followup.yaml`
+- run Qwen on seeds `123` and `456`
+- same informative conditions:
+  - budgets `0`, `100`, `1000`
+  - phases `1`, `1+2`
+- purpose:
+  - confirm the `0ms -> 100ms` gain
+  - determine whether the Qwen `1000ms 1+2` drop is a real Phase 2 issue or a single-seed fluke
 
 ## Stable Default Run Tonight
 
@@ -113,16 +158,15 @@ Remaining limit:
 
 On one A10G, run in this order:
 
-1. baselines
-2. IdleKV
-3. ablations
+1. preliminary scouts that choose the final matrix
+2. scoped baselines / ablations only after the final matrix is sharper
+3. larger expansion on A100-class hardware
 
 Commands:
 
 ```bash
-python scripts/run_experiments.py --config configs/main.yaml --only-baselines
-python scripts/run_experiments.py --config configs/main.yaml --only-idlekv
-python scripts/run_experiments.py --config configs/main.yaml --only-ablations
+python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
+python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
 ```
 
 Use `tmux` and consider `--skip-existing` if resuming after interruption.

@@ -1,0 +1,40 @@
+{
+  "status": "completed",
+  "experiment": {
+    "type": "idlekv",
+    "model": {
+      "name": "meta-llama/Llama-3.1-8B-Instruct",
+      "short": "llama8b"
+    },
+    "seed": 42,
+    "ratio": 0.7,
+    "idle_budget_ms": 1000,
+    "phases": "1+2"
+  },
+  "method": "idlekv",
+  "ratio": 0.7,
+  "idle_budget_ms": 1000,
+  "phases": "1+2",
+  "seed": 42,
+  "benchmark_results": {
+    "ruler": {
+      "4096": {
+        "niah_single_1": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "niah_single_2": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "niah_single_3": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "avg_accuracy": 1.0,
+        "num_subtasks": 3
+      }
+    }
+  },
+  "wall_time_sec": 403.99244457700115
+}
