@@ -12,7 +12,7 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
   than the original long baseline-first queue for choosing the next runs.
 
 Current validated test status:
-- `43 passed`
+- `44 passed`
 
 ## What Was Validated
 
@@ -66,12 +66,21 @@ Tracked snapshot:
 Recommended next small scout:
 - `configs/qwen_seed_followup.yaml`
 - run Qwen on seeds `123` and `456`
-- same informative conditions:
-  - budgets `0`, `100`, `1000`
-  - phases `1`, `1+2`
+- exact conditions:
+  - `0ms, phase=1`
+  - `100ms, phase=1`
+  - `1000ms, phase=1`
+  - `1000ms, phase=1+2`
 - purpose:
   - confirm the `0ms -> 100ms` gain
   - determine whether the Qwen `1000ms 1+2` drop is a real Phase 2 issue or a single-seed fluke
+  - compare long-budget Phase 2 directly against long-budget Phase 1
+
+Important scheduler note:
+- `100ms` with `phases=1+2` is not informative in this codebase
+- Phase 2 only becomes eligible when `max_time_ms > 100`
+- that is why the follow-up scout uses explicit condition pairs instead of a
+  full budgets × phases cartesian product
 
 ## Stable Default Run Tonight
 

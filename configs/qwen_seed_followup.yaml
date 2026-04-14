@@ -1,6 +1,7 @@
 # Qwen-only follow-up scout
-# Purpose: verify that the current Qwen signal is robust across seeds and check
-# whether the heavier `1+2` path ever earns its place.
+# Purpose: verify that the current Qwen signal is robust across seeds and
+# directly compare the winning short-idle Phase 1 path against the suspicious
+# long-budget Phase 2 path.
 
 hardware: a10g_24gb
 
@@ -45,8 +46,18 @@ baselines:
     method: snapkv
 
 idlekv:
-  idle_budgets_ms: [0, 100, 1000]
-  phases: [1, "1+2"]
+  # Explicit scout conditions, not a cartesian product.
+  # `100ms + 1+2` is intentionally omitted because the scheduler only allows
+  # Phase 2 when `max_time_ms > 100`, so that condition is just Phase 1 again.
+  conditions:
+    - idle_budget_ms: 0
+      phases: 1
+    - idle_budget_ms: 100
+      phases: 1
+    - idle_budget_ms: 1000
+      phases: 1
+    - idle_budget_ms: 1000
+      phases: "1+2"
 
 ablations:
   shadow_buffer_sizes: [256]

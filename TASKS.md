@@ -1,6 +1,6 @@
 # IdleKV TODO List
 
-**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`43 passed`).
+**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`44 passed`).
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
@@ -23,6 +23,11 @@ Fresh handoff:
 - Purpose:
   - verify the `0ms -> 100ms` gain on the informative model across seeds
   - determine whether the `1000ms 1+2` drop is a real Phase 2 issue or a seed-specific fluke
+  - compare `1000ms phase=1` against `1000ms phase=1+2`
+- Why this exact scout:
+  - `100ms phase=1+2` is redundant because the scheduler only allows Phase 2
+    when `max_time_ms > 100`
+  - the explicit scout conditions avoid wasting runs on that duplicate case
 - Treat this as the last critical scout before locking the larger matrix.
 
 ## 🏃‍♂️ Main Experiments (~12-30 hours total - multi-day runs)
@@ -96,7 +101,7 @@ Fresh handoff:
 
 ### **Quality Checklist**
 
-- `make test` passes (`43 passed`) ✅
+- `make test` passes (`44 passed`) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
 - Larger-memory expansion is reproducible from `configs/a100_scaleup.yaml`

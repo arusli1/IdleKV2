@@ -176,8 +176,23 @@ def build_experiment_matrix(config: dict, args) -> list[dict]:
 
             if not args.only_baselines and not args.only_ablations:
                 ratio = args.ratio or config["compression"]["primary_ratio"]
-                for budget in config["idlekv"]["idle_budgets_ms"]:
-                    for phases in config["idlekv"]["phases"]:
+                idlekv_cfg = config["idlekv"]
+                conditions = idlekv_cfg.get("conditions")
+                if conditions:
+                    condition_iter = [
+                        (
+                            condition["idle_budget_ms"],
+                            condition["phases"],
+                        )
+                        for condition in conditions
+                    ]
+                else:
+                    condition_iter = [
+                        (budget, phases)
+                        for budget in idlekv_cfg["idle_budgets_ms"]
+                        for phases in idlekv_cfg["phases"]
+                    ]
+                for budget, phases in condition_iter:
                         experiments.append({
                             "type": "idlekv",
                             "model": model_cfg,

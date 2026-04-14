@@ -77,7 +77,7 @@ pip install kvpress  # Optional, for baseline comparisons
 ```bash
 # Run test suite
 make test
-# Expected output: tests should pass; current repo state is `43 passed`
+# Expected output: tests should pass; current repo state is `44 passed`
 ```
 
 ### 3.2 Test Model Access

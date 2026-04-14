@@ -85,6 +85,22 @@ def test_build_experiment_matrix_filters_model_and_seed():
     assert len(experiments) == 8
 
 
+def test_build_experiment_matrix_supports_explicit_idlekv_conditions():
+    config = _config()
+    config["idlekv"] = {
+        "conditions": [
+            {"idle_budget_ms": 0, "phases": 1},
+            {"idle_budget_ms": 1000, "phases": "1+2"},
+        ]
+    }
+    experiments = build_experiment_matrix(config, _args(only_idlekv=True, model="a", seed=7))
+    assert len(experiments) == 2
+    assert experiments[0]["idle_budget_ms"] == 0
+    assert experiments[0]["phases"] == 1
+    assert experiments[1]["idle_budget_ms"] == 1000
+    assert experiments[1]["phases"] == "1+2"
+
+
 def test_experiment_slug_encodes_phase_selection():
     assert phases_label(1) == "1"
     assert phases_label("1+2") == "1+2"
