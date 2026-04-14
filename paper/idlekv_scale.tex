@@ -222,7 +222,8 @@ Algorithm~\ref{alg:phase1} details the procedure.
 \textbf{Complexity.}
 $O(d \cdot |S_\ell| \cdot H \cdot L)$ total, with $|S_\ell|{=}256$, $H$
 heads, $L$ layers.
-Wall-clock cost on A100: 15--70\,ms across all layers of Llama-3.1-8B.
+Wall-clock cost is hardware-dependent; on our target A10G setup we budget
+Phase~1 to stay below 100\,ms across all layers of Llama-3.1-8B.
 
 Phase~1 differs from CaliDrop \citep{calidrop2025} in both mechanism and
 scheduling: CaliDrop stores pre-computed attention contributions and calibrates
@@ -276,7 +277,7 @@ it entirely out of the generation critical path.
 
 Table~\ref{tab:memory} summarizes IdleKV's memory footprint over the SnapKV
 baseline.
-Total GPU overhead is 80\,MB (0.10\% of an 80\,GB A100).
+Total GPU overhead is 80\,MB (${\approx}0.3\%$ of a 24\,GB A10G).
 CPU backup for a 4K context requires ${\approx}$512\,MB.
 We verify that decode throughput with and without shadow buffer hooks differs
 by ${<}2\%$ (not statistically significant at $n{=}3$ seeds), consistent with
@@ -287,7 +288,7 @@ periods by construction.
 \begin{table}[t]
 \centering
 \caption{Memory overhead of \textbf{IdleKV} over SnapKV baseline.
-GPU overhead is 0.10\% of an 80\,GB device.}
+GPU overhead is ${\approx}0.3\%$ of a 24\,GB A10G.}
 \label{tab:memory}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lcc}
@@ -319,7 +320,7 @@ Total overhead & \textbf{80} & \textbf{512} \\
 
 \textbf{Models and hardware.}
 We evaluate on Llama-3.1-8B-Instruct (primary) and Qwen2.5-7B-Instruct
-(cross-model validation), both on a single NVIDIA A100 (80\,GB HBM).
+(cross-model validation), both on a single NVIDIA A10G (24\,GB GDDR6).
 
 \textbf{Agentic trace simulation.}
 Tool calls are simulated every 100 generated tokens with log-normal idle

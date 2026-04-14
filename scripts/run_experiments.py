@@ -70,7 +70,13 @@ def run_idlekv(model, tokenizer, benchmark_fn, ratio, idle_budget_ms, phases, **
     """Run IdleKV with specified idle budget and phases."""
     from idlekv.core.compression import CompressedKVManager
 
-    manager = CompressedKVManager(model, compression_ratio=ratio)
+    manager = CompressedKVManager(
+        model,
+        compression_ratio=ratio,
+        shadow_size=kwargs.pop("shadow_size", 256),
+        query_buffer_size=kwargs.pop("query_buffer_size", 32),
+        offload_full_kv=kwargs.pop("offload_full_kv", True),
+    )
 
     # Run benchmark with IdleKV manager
     return benchmark_fn(
@@ -250,12 +256,18 @@ def main():
     parser.add_argument("--model", type=str, default=None, help="Run only this model (short name)")
     parser.add_argument("--ratio", type=float, default=None, help="Run only this ratio")
     parser.add_argument("--seed", type=int, default=None, help="Run only this seed")
+    parser.add_argument("--output-dir", type=str, default=None, help="Override output_dir from config")
     parser.add_argument("--dry-run", action="store_true", help="Print what would run")
+    parser.add_argument("--verbose", action="store_true", help="Print loaded config and experiment payloads")
     args = parser.parse_args()
 
     config = load_config(args.config)
-    output_dir = Path(config["output_dir"])
+    output_dir = Path(args.output_dir or config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.verbose:
+        print("Loaded config:")
+        print(json.dumps(config, indent=2))
 
     # Filter models
     models = config["models"]
@@ -323,6 +335,8 @@ def main():
         print(f"Experiment {i+1}/{len(experiments)}: {exp['type']}")
         print(f"  Model: {exp['model']['short']}, Seed: {exp['seed']}")
         print(f"{'='*60}")
+        if args.verbose:
+            print(json.dumps(exp, indent=2))
 
         # Execute experiment
         try:

@@ -20,7 +20,7 @@ def get_tiny_model():
         model.eval()
         return model, tokenizer
     except Exception:
-        pytest.skip(f"Could not load {model_name}. Run: huggingface-cli download {model_name}")
+        pytest.skip(f"Could not load {model_name}. Run: hf download {model_name}")
 
 
 @pytest.mark.slow

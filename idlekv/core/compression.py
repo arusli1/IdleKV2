@@ -43,7 +43,7 @@ class CompressedKVManager:
         compression_ratio: float = 0.5,
         shadow_size: int = 256,
         query_buffer_size: int = 32,
-        offload_full_kv: bool = False,
+        offload_full_kv: bool = True,
     ):
         self.model = model
         self.compression_ratio = compression_ratio

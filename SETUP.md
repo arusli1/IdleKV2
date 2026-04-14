@@ -1,10 +1,10 @@
 # IdleKV Setup Guide
 
-Complete setup instructions for running IdleKV experiments on AWS A100 instances.
+Complete setup instructions for running IdleKV experiments on AWS A10G instances.
 
 ## Prerequisites
 
-- AWS A100 instance with CUDA drivers installed
+- AWS A10G instance with CUDA drivers installed
 - Python 3.9+ 
 - Git
 - HuggingFace account with access to Llama models
@@ -25,17 +25,16 @@ Complete setup instructions for running IdleKV experiments on AWS A100 instances
 4. Select **"Read"** permissions
 5. Copy the token (starts with `hf_...`)
 
-### 1.3 Login on Server
+### 1.3 Login on Server (after Step 2)
 ```bash
-# Install HF CLI
-pip install huggingface_hub
+# After Step 2 installs the repo virtualenv and dependencies
 
 # Login with your token
-huggingface-cli login
+.venv/bin/hf auth login
 # Paste your token when prompted: hf_xxxxxxxxxxxxxxxxxxxxxxx
 
 # Verify login
-huggingface-cli whoami
+.venv/bin/hf auth whoami
 ```
 
 ## Step 2: Environment Setup
@@ -46,20 +45,26 @@ git clone https://github.com/your-username/IdleKV.git
 cd IdleKV
 ```
 
-### 2.2 Verify GPU
+### 2.2 Create Virtual Environment
 ```bash
-nvidia-smi
-# Should show A100 with ~80GB memory
+uv venv .venv  # or: python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### 2.3 Install Dependencies
+### 2.3 Verify GPU
 ```bash
-# Option A: Use Makefile (recommended)
+nvidia-smi
+# Should show NVIDIA A10G with ~24GB memory
+```
+
+### 2.4 Install Dependencies
+```bash
+# Option A: Use Makefile inside the virtualenv (recommended)
 make install
 
 # Option B: Manual installation
 pip install -e ".[dev]"
-pip install flash-attn --no-build-isolation  # Optional but recommended
+pip install flash-attn --no-build-isolation  # Optional; requires nvcc/CUDA toolkit
 pip install kvpress  # Optional, for baseline comparisons
 ```
 
@@ -69,7 +74,7 @@ pip install kvpress  # Optional, for baseline comparisons
 ```bash
 # Run test suite
 make test
-# Expected output: ====================== 21 passed ======================
+# Expected output: ====================== 23 passed ======================
 ```
 
 ### 3.2 Test Model Access
@@ -135,12 +140,12 @@ Result: GO - Phase 1 shows meaningful improvement
 ## Step 5: Full Experiments
 
 ### 5.1 Configuration
-The main configuration is in `configs/main.yaml`. Key settings for A100:
+The main configuration is in `configs/main.yaml`. Key settings for A10G:
 
 ```yaml
-hardware: a100_80gb
+hardware: a10g_24gb
 compression:
-  offload_full_kv: false  # Keep full KV on GPU with 80GB
+  offload_full_kv: true  # Store full KV on CPU for 24GB setup
 models:
   - meta-llama/Llama-3.1-8B-Instruct  
   - Qwen/Qwen2.5-7B-Instruct
@@ -203,11 +208,11 @@ results/
 ### Model Loading Issues
 ```bash
 # Check HF login status
-huggingface-cli whoami
+hf auth whoami
 
 # Re-login if needed
-huggingface-cli logout
-huggingface-cli login
+hf auth logout
+hf auth login
 
 # Test direct model access
 python -c "from huggingface_hub import hf_hub_download; print('Testing download...'); hf_hub_download('meta-llama/Llama-3.1-8B-Instruct', 'config.json')"
@@ -249,18 +254,17 @@ chmod -R 755 ~/.cache/huggingface/
 
 ## Performance Expectations
 
-### A100 80GB Benchmarks
+### A10G 24GB Expectations
 - **Model loading**: ~2-3 minutes (first time)
-- **Go/No-Go (5 trials)**: ~5-10 minutes
-- **Single experiment run**: ~30-60 minutes
-- **Full experiment suite**: 4-8 hours
-- **Phase 1 refinement**: ~15-70ms
-- **Phase 2 per layer**: ~15-40ms
+- **Go/No-Go (5 trials)**: ~5-15 minutes
+- **Single experiment run**: ~30-90 minutes
+- **Full experiment suite**: 4-12 hours
+- **Phase 1 refinement**: target sub-100ms
+- **Phase 2 per layer**: hardware-dependent; verify on your local prompt mix
 
 ### Throughput Targets
-- **Baseline (no compression)**: ~50-80 tokens/sec
-- **SnapKV**: ~60-90 tokens/sec  
-- **IdleKV**: ~60-90 tokens/sec (should match SnapKV)
+- **Absolute tok/s**: depends on model, prompt length, and PCIe overhead on A10G
+- **Relative target**: IdleKV should stay close to SnapKV throughput (within a few percent)
 
 ## Experiment Configurations
 
@@ -296,7 +300,7 @@ python -u scripts/go_no_go.py --model meta-llama/Llama-3.1-8B-Instruct --num-tri
 ### Common Error Messages
 
 **"Repository not found"**
-- Check HuggingFace login: `huggingface-cli whoami`
+- Check HuggingFace login: `hf auth whoami`
 - Verify model access permissions
 
 **"CUDA out of memory"**  

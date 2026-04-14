@@ -8,16 +8,19 @@ Treating agentic idle time as a first-class compute resource for KV cache qualit
 ```bash
 git clone https://github.com/user/IdleKV.git
 cd IdleKV
+uv venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-### GPU Experiments (A100 80GB)
+### GPU Experiments (A10G 24GB)
 ```bash
 # On GPU machine
 git pull
-pip install -e ".[dev]"
-pip install flash-attn --no-build-isolation
+uv venv .venv
+source .venv/bin/activate
+make install
 pytest tests/ -v  # Should pass on GPU too
 ```
 
@@ -83,8 +86,8 @@ IdleKV/
 
 ## Hardware Note
 
-**Target hardware:** Single NVIDIA A100 (80GB HBM2e, 1935 GB/s bandwidth)
+**Target hardware:** Single NVIDIA A10G (~24GB VRAM)
 
-With 80GB VRAM, full uncompressed KV caches (4K-8K context) easily fit on GPU alongside model weights. IdleKV keeps full prefill KV on GPU by default, eliminating CPU-GPU transfers during Phase 2 refresh.
+On A10G-class GPUs, the default path is to keep the compressed working cache on GPU and offload the full prefill KV backup to CPU (`offload_full_kv: true`). This avoids exhausting 24GB VRAM while still enabling Phase 2 refresh during idle windows.
 
-For smaller GPUs, set `offload_full_kv: true` in config to fall back to CPU storage.
+On larger-memory GPUs, set `offload_full_kv: false` if you prefer to keep the full backup on-device and avoid CPU->GPU transfer during Phase 2 refresh.

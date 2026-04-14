@@ -1,8 +1,8 @@
 # IdleKV TODO List
 
-**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (21/21 tests passing).
+**✅ Core Implementation Complete** - All shadow buffer, Phase 1/2, scheduler, and compression components are implemented and tested (23/23 tests passing).
 
-**📋 Prerequisites**: Complete `SETUP.md` first - A100 environment ready, models downloaded, HF authenticated.
+**📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
 ---
 
@@ -12,7 +12,7 @@
 | Task                         | Files                 | Runtime | Exit Criteria                                 |
 | ---------------------------- | --------------------- | ------- | --------------------------------------------- |
 | **Go/No-Go decision**        | `scripts/go_no_go.py` | ~10 min | Prints GO/MARGINAL/NO-GO with delta %         |
-| **Performance verification** | —                     | ~10 min | Phase 1: ~15-70ms, Phase 2: ~500ms-1.3s total |
+| **Performance verification** | —                     | ~10 min | Phase 1: target <100ms, Phase 2: verify locally on A10G |
 
 
 ## 🏃‍♂️ Main Experiments (~20-40 hours total - multi-day runs)
@@ -63,11 +63,11 @@
 - **GQA head mapping correct?** Test both Llama (32→8) and Qwen (28→4)
 - **Memory management?** `del full_k, full_v` after each Phase 2 layer
 
-### **Performance Targets (A100)**
+### **Performance Targets (A10G)**
 
-- **Phase 1**: 15-70ms for Llama-3.1-8B at 4K context
-- **Phase 2**: 15-40ms per layer, 500ms-1.3s total (32 layers)
-- **Throughput**: Match SnapKV decode speed (±2%)
+- **Phase 1**: Target sub-100ms for Llama-3.1-8B at 4K context
+- **Phase 2**: Tens of ms per layer plus CPU offload overhead; verify on-host
+- **Throughput**: Match SnapKV decode speed within a few percent
 - **Wall-clock**: ≤ SnapKV on realistic agentic traces
 
 ### **Long-Running Tasks**
@@ -78,7 +78,7 @@
 
 ### **Quality Checklist**
 
-- `make test` passes (21/21 tests) ✅
+- `make test` passes (23/23 tests) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
 - JSON results include: model, method, seed, metrics, timing
@@ -104,7 +104,7 @@
 - RoPE projection in Phase 1
 - O(n) KV tracking instead of O(n²)
 - Thread-safe interruption
-- A100 memory management
+- A10G memory management / CPU full-KV offload
 - GQA head mapping for Llama/Qwen
 
-**Ready to deploy on A100 and start experiments immediately!** 🚀
+**Ready to deploy on A10G and start experiments immediately!** 🚀

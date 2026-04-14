@@ -5,8 +5,9 @@ Loads the full prefill KV from CPU layer-by-layer, computes full attention
 scores with recent queries, and re-selects top-k tokens for the compressed
 cache. Processes shallow layers first (they propagate errors most severely).
 
-Cost: ~15-40ms per layer on A100. All 32 layers: ~500ms-1.3s.
-Anytime: each layer is independent; interruption yields a valid partial state.
+Cost is hardware-dependent; expect tens of milliseconds per layer, with a
+longer idle window needed to refresh all layers. Anytime: each layer is
+independent; interruption yields a valid partial state.
 """
 
 import torch
@@ -145,8 +146,8 @@ class FullKVStore:
     """
     Stores full uncompressed KV cache in memory.
 
-    Fix Bug 6: For 96GB VRAM, can store on GPU (no CPU offload needed).
-    For smaller GPUs, falls back to CPU storage.
+    On A10G-class 24GB GPUs, keep the full backup on CPU by default.
+    Larger-memory GPUs can optionally keep it on-device.
 
     Created during prefill. Updated after each tool-result prefill.
     Used during Phase 2 for full-attention refresh.
@@ -176,7 +177,7 @@ class FullKVStore:
                 ))
                 self.device = "cpu"
             else:
-                # Keep on GPU (96GB VRAM setup)
+                # Keep on the current device when GPU memory allows it.
                 self.layers.append((k, v))
                 self.device = k.device
 
