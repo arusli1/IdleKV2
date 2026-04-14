@@ -343,17 +343,17 @@ quality-vs-compute tradeoff.
 (1)~\textbf{Full cache}: no compression; quality upper bound.
 (2)~\textbf{SnapKV $r{=}0.3$}: 30\% token retention; the ``why not compress
 less?'' Pareto reference.
-(3)~\textbf{SnapKV $r{=}0.5$}: 50\% token retention; primary throughput
-reference.
+(3)~\textbf{SnapKV $r{=}0.5$}: 50\% token retention; the primary throughput
+reference in the workshop-scale study.
 (4)~\textbf{H2O $r{=}0.5$}: heavy-hitter oracle at 50\% retention.
 (5)~\textbf{StreamingLLM}: attention sink $+$ sliding window; lower-bound
 quality reference.
 (6)~\textbf{Sync refresh}: SnapKV $r{=}0.5$ with RefreshKV-style periodic
 refresh during generation (stride~15); isolates the value of idle-time
-scheduling from the quality operations themselves.
-IdleKV must approach Baseline~2 quality while maintaining Baseline~3
-throughput; Baseline~6 isolates whether idle-time scheduling---not the
-underlying operations---drives the gains.
+scheduling from the quality operations themselves in the larger-GPU scale-up
+study. In the single-A10G workshop study, the central question is whether
+IdleKV improves over SnapKV at the same decode operating point while preserving
+throughput.
 
 \textbf{Benchmarks and metrics.}
 The primary single-A10G study centers on RULER at 4K context, which is the
@@ -380,18 +380,20 @@ average score, KL divergence vs.\ full cache, and decode throughput
 \section{Results}
 \label{sec:results}
 
-Results in Tables~\ref{tab:main_results}--\ref{tab:idle_budget} are
-calibrated predictions derived from three validated prior measurements:
+This version of the paper separates two evidence tiers.
+The measured workshop-scale core is the delayed-query pilot plus the stable
+single-A10G experiment matrix described above. Tables~\ref{tab:main_results}--
+\ref{tab:idle_budget} still contain calibrated placeholders for the broader
+scale-up study, derived from three validated prior measurements:
 \citet{refreshkv2025}'s 52\% gap recovery, \citet{lazyeviction2025}'s $>$95\%
 TIR rate, and Ada-KV's attention pattern drift measurements
-\citep{adakv2024}.
-Experiments on Llama-3.1-8B and Qwen2.5-7B are in progress; point estimates
-and confidence intervals will replace the current ranges in the final version.
+\citep{adakv2024}. As broader A100-scale runs complete, these ranges should be
+replaced with measured point estimates and confidence intervals.
 
 \subsection{Main Quality Results}
 
-Table~\ref{tab:main_results} presents quality and throughput across all
-baselines on Llama-3.1-8B.
+Table~\ref{tab:main_results} presents the target quality and throughput story
+for the broader scale-up matrix on Llama-3.1-8B.
 The calibrated model predicts that SnapKV $r{=}0.5$ opens a 5--9 point RULER
 gap relative to full cache.
 It further predicts that Phase~1 alone recovers 1.5--3.0\% of that gap within
@@ -402,11 +404,11 @@ $r{=}0.5$ decode throughput.
 Sync refresh is predicted to reach comparable quality but at
 ${\sim}0.75{\times}$ throughput, consistent with the hypothesis that idle-time
 scheduling---not just the underlying quality operations---is the decisive
-advantage.
+advantage once the scale-up baseline is fully measured.
 
 \begin{table}[t]
 \centering
-\caption{Quality and throughput across baselines (Llama-3.1-8B,
+\caption{Quality and throughput across the broader scale-up baselines (Llama-3.1-8B,
 calibrated predictions; see Section~\ref{sec:results}).
 ``LB'' $=$ LongBench average.
 \textbf{IdleKV P1$+$P2} is predicted to approach $r{=}0.3$ quality at

@@ -44,7 +44,7 @@ Fresh handoff:
 | --------------------------- | ------------------------- | ---------- | ----------------------------------------------- |
 | **Shadow buffer ablation**  | —                         | ~2-3 hours | 5 buffer sizes × RULER `r=0.7` × multiple seeds |
 | **Compression ratio sweep** | —                         | ~2-3 hours | r=0.3/0.5/0.7 × IdleKV × RULER × multiple seeds |
-| **Phase comparison**        | —                         | ~2-3 hours | Phase 1 vs 2 vs both × 2 models × benchmarks    |
+| **Phase comparison**        | —                         | ~2-3 hours | Phase 1 vs 2 vs both on `RULER 4K` first; expand to LongBench on A100 scale-up |
 | **Figure generation**       | `scripts/plot_figures.py` | ~15 min    | All PDFs in `figures/` directory                |
 | **Per-subtask analysis**    | —                         | ~30 min    | 13-subtask RULER breakdown heatmap              |
 
@@ -92,6 +92,7 @@ Fresh handoff:
 - `make test` passes (`41 passed`) ✅
 - `make lint` passes (clean code)
 - All results reproducible from `configs/main.yaml`
+- Larger-memory expansion is reproducible from `configs/a100_scaleup.yaml`
 - JSON results include: model, method, seed, metrics, timing
 - Figures generated from code (not hand-made)
 - Paper anonymized (no model/institution names)
