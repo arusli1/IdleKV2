@@ -1,4 +1,4 @@
-.PHONY: install test lint go-no-go run-main run-ablations figures clean
+.PHONY: install test lint go-no-go run-main run-ablations run-scale-core run-scale-ablation run-llama-probe run-throughput-qwen dry-run dry-run-scale figures clean
 
 install:
 	pip install -e ".[dev]"
@@ -21,17 +21,37 @@ go-no-go:
 		--ratio 0.7 \
 		--num-trials 20
 
-# Full experiment suite
+# Broader A10G exploratory matrix
 run-main:
 	python scripts/run_experiments.py --config configs/main.yaml
 
-# Ablations only
+# Broader A10G ablations only
 run-ablations:
 	python scripts/run_experiments.py --config configs/main.yaml --only-ablations
 
-# Dry run (print experiment matrix)
+# Broader A10G dry run
 dry-run:
 	python scripts/run_experiments.py --config configs/main.yaml --dry-run
+
+# SCALE workshop-core matrix
+run-scale-core:
+	python scripts/run_experiments.py --config configs/scale_core.yaml
+
+# SCALE minimal mechanism ablation
+run-scale-ablation:
+	python scripts/run_experiments.py --config configs/scale_mechanism_ablation.yaml --only-ablations
+
+# Tiny harder Llama support probe
+run-llama-probe:
+	python scripts/run_experiments.py --config configs/llama_hardness_probe.yaml --num-samples 10
+
+# Decode operating-point confirmation on the informative Qwen slice
+run-throughput-qwen:
+	python scripts/throughput_spotcheck.py --model Qwen/Qwen2.5-7B-Instruct --context-length 4096 --num-trials 3 --num-measure-tokens 128
+
+# SCALE dry run
+dry-run-scale:
+	python scripts/run_experiments.py --config configs/scale_core.yaml --dry-run
 
 # Generate paper figures
 figures:

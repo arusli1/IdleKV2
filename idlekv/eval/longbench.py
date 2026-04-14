@@ -402,7 +402,7 @@ def evaluate_longbench(
     """
     Evaluate a lightweight LongBench v1 slice using official prompts/metrics.
 
-    The repo’s nightly A10G setting intentionally truncates to a 4K prompt
+    The repo’s default A10G setting intentionally truncates to a 4K prompt
     budget unless the caller overrides `max_input_length`.
     """
     if subtasks is None:

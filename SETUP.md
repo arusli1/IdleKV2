@@ -3,7 +3,7 @@
 Complete setup instructions for running IdleKV experiments on AWS A10G instances.
 
 Fresh handoff on this machine:
-- read [STATUS.md](STATUS.md) first for current scope, validated results, tonight's run plan, and the larger-GPU follow-up path
+- read [STATUS.md](STATUS.md) first for current scope, validated results, the recommended run order, and the larger-GPU follow-up path
 
 ## Prerequisites
 
@@ -165,13 +165,13 @@ compression:
   offload_full_kv: true  # Store full KV on CPU for 24GB setup
 evaluation:
   ruler:
-    context_lengths: [4096]  # A10G nightly default
+    context_lengths: [4096]  # A10G default path
 models:
   - meta-llama/Llama-3.1-8B-Instruct  
   - Qwen/Qwen2.5-7B-Instruct
 ```
 
-The default nightly matrix intentionally excludes the `sync_refresh` baseline on
+The broader A10G matrix intentionally excludes the `sync_refresh` baseline on
 single-A10G runs. The baseline remains implemented, but its clean isolated `4K`
 path still OOMs on this hardware, so it should be treated as follow-up work
 after Phase 2 memory optimization or on a larger-memory GPU.
@@ -228,9 +228,10 @@ python scripts/run_experiments.py \
     --only-ablations
 ```
 
-Then run the broader matrix:
+Then, if you want the broader constrained-hardware expansion matrix rather than
+the workshop-core package, run:
 ```bash
-# Full experiment suite (several hours)
+# Broader A10G exploratory suite (multi-day on one A10G)
 make run-main
 
 # Or with specific options
@@ -242,7 +243,7 @@ python scripts/run_experiments.py \
 # Dry run (see what will be executed)
 make dry-run
 
-# Explicit 8K follow-up run (not the default A10G nightly path)
+# Explicit 8K follow-up run (not part of the default A10G path)
 python scripts/run_experiments.py \
     --config configs/main.yaml \
     --model llama8b \
@@ -330,10 +331,7 @@ nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv
 If you get CUDA OOM errors:
 1. Set `offload_full_kv: true` in `configs/main.yaml`
 2. Reduce batch size in experiments
-3. Use gradient checkpointing:
-   ```python
-   model.gradient_checkpointing_enable()
-   ```
+3. Prefer the scoped workshop configs (`scale_core.yaml`, `scale_mechanism_ablation.yaml`) over the broader `main.yaml` matrix on a single A10G
 
 ### Flash Attention Installation
 ```bash
@@ -355,14 +353,15 @@ chmod -R 755 ~/.cache/huggingface/
 
 ### A10G 24GB Expectations
 - **Model loading**: ~2-3 minutes (first time)
-- **Go/No-Go (5 trials)**: ~5-15 minutes
-- **Single experiment run**: ~30-90 minutes
-- **Full experiment suite**: 4-12 hours
+- **Go/No-Go (12 trials)**: ~5-15 minutes
+- **Single scout experiment**: typically minutes, not hours, on `RULER 4K`
+- **Workshop-core matrix (`scale_core.yaml`)**: same-day run on one A10G
+- **Broader A10G matrix (`main.yaml`)**: multi-day if run end-to-end
 - **Phase 1 refinement**: target sub-100ms
 - **Phase 2 per layer**: hardware-dependent; verify on your local prompt mix
-- **Default nightly scope**: baselines on `RULER 4K` + `LongBench`; IdleKV and
+- **Default A10G scope**: baselines on `RULER 4K` + `LongBench`; IdleKV and
   ablations on `RULER 4K` at `r=0.7`
-- **Default nightly RULER context**: `4K`
+- **Default A10G RULER context**: `4K`
 - **8K status**: clean isolated IdleKV still OOMs on this A10G path; treat as
   follow-up, not default
 - **LongBench + IdleKV status**: follow-up on this A10G path until decode

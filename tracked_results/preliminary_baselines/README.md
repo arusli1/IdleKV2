@@ -1,7 +1,8 @@
 # Preliminary Baseline Snapshot
 
 Purpose:
-- Preserve the first completed baseline outputs from the long A10G overnight run
+- Preserve the first completed baseline outputs from the earlier long
+  baseline-first A10G run
   before pivoting to a smaller, higher-value preliminary IdleKV suite.
 
 Context:

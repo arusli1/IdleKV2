@@ -59,31 +59,37 @@ If those confirm the current read:
 - main workshop matrix: `configs/scale_core.yaml`
 - minimal mechanism ablation: `configs/scale_mechanism_ablation.yaml`
 
-## 🏃‍♂️ Main Experiments (~12-30 hours total - multi-day runs)
+## 🏃‍♂️ Workshop-Core Experiments (~same day on one A10G)
 
 **⚠️ Use `tmux` for long runs - SSH disconnects will kill processes**
 
-**Verified A10G nightly default**
-- baselines on `RULER 4K` + `LongBench`
-- IdleKV and ablations on `RULER 4K` at `r=0.7`
-- `sync_refresh` excluded from the default matrix because its clean isolated `4K` path still OOMs
-- `8K` RULER kept as explicit follow-up work, not default
-- `LongBench + IdleKV` kept as explicit follow-up work until decode-cache growth is optimized
+**Preferred SCALE 2026 run path**
+- `configs/scale_core.yaml` is the preferred workshop-core matrix
+- `configs/scale_mechanism_ablation.yaml` is the preferred minimal mechanism ablation
+- `configs/main.yaml` remains a broader constrained-hardware expansion matrix, not the default paper run
 
 Interpretation:
-- this A10G matrix is useful for scouting and constrained-hardware evidence
-- it is not automatically the final `SCALE` paper matrix, and it is not the
-  final `NeurIPS` matrix
-- after the Qwen scout, the default assumption should be a sharper
-  Phase-1-centered `SCALE` matrix rather than brute-forcing every remaining
-  condition
+- the workshop package should be built around the Phase-1-centered `SCALE` configs
+- the broader A10G matrix is still useful as constrained-hardware supporting evidence
+- neither one is automatically the final `NeurIPS` matrix
 
 | Task                       | Files                          | Runtime      | Exit Criteria                                               |
 | -------------------------- | ------------------------------ | ------------ | ----------------------------------------------------------- |
-| **Full baseline suite**    | `scripts/run_experiments.py`   | ~10-18 hours | 7 default baselines × 2 models × 2 benchmarks × 3 seeds |
-| **IdleKV budget sweep**    | `scripts/run_experiments.py`   | ~6-12 hours  | 7 budgets × 3 phases × core configs on `RULER 4K`             |
-| **Throughput measurement** | `idlekv/eval/metrics.py`       | ~1 hour      | IdleKV tok/s ≈ SnapKV tok/s (±2%)                           |
-| **Wall-clock timing**      | `idlekv/simulation/harness.py` | ~1 hour      | IdleKV ≤ SnapKV on 50-turn traces                           |
+| **Throughput spot-check**  | `scripts/throughput_spotcheck.py` | <1 hour   | shortlisted IdleKV setting stays close to compressed baseline decode speed |
+| **Llama hardness probe**   | `configs/llama_hardness_probe.yaml` | <1 hour | enough non-ceiling evidence to decide whether Llama belongs in the workshop package |
+| **SCALE core matrix**      | `configs/scale_core.yaml`      | same day     | core method/baseline comparison across the chosen workshop slice |
+| **Mechanism ablation**     | `configs/scale_mechanism_ablation.yaml` | same day | shadow-buffer contribution is isolated cleanly |
+
+
+## 🧱 Broader A10G Expansion (Optional, Multi-Day)
+
+Use this only after the workshop-core matrix is locked.
+
+| Task                       | Files                        | Runtime      | Exit Criteria                                               |
+| -------------------------- | ---------------------------- | ------------ | ----------------------------------------------------------- |
+| **Broader baseline suite** | `scripts/run_experiments.py` | multi-day    | constrained-hardware baseline package on `RULER 4K` + `LongBench` |
+| **Broader IdleKV sweep**   | `scripts/run_experiments.py` | multi-day    | dense budgets/phases measured on the stable `RULER 4K` slice |
+| **Extra ablations**        | `scripts/run_experiments.py` | multi-day    | only run if they materially sharpen the workshop narrative |
 
 
 ## 📊 Ablations & Analysis (~4-8 hours)

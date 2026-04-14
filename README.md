@@ -9,7 +9,8 @@ If you are taking over this repo on a fresh SSH/Codex session, read these in ord
 1. [STATUS.md](STATUS.md)
 2. [SETUP.md](SETUP.md)
 3. [TASKS.md](TASKS.md)
-4. [`configs/main.yaml`](configs/main.yaml)
+4. [`configs/scale_core.yaml`](configs/scale_core.yaml)
+5. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the workshop-core scope on a single A10G
 
 ## Setup
 
@@ -93,9 +94,11 @@ python scripts/run_experiments.py \
   --only-ablations
 ```
 
-### Step 3: Broader Experiment Suite
-Once the scouts have locked the settings, expand to the broader matrix. On a
-single A10G, the stable default path is:
+### Step 3: Broader A10G Expansion Matrix
+Once the scouts have locked the settings, the preferred workshop-core run is
+`configs/scale_core.yaml`. The broader single-A10G matrix in `configs/main.yaml`
+is still useful, but it should be treated as an exploratory expansion path, not
+the default paper run. On one A10G, the broader stable path is:
 - baselines run on `RULER 4K` plus `LongBench`
 - IdleKV and ablations default to `RULER 4K` at `r=0.7`
 - `sync_refresh` excluded from the default matrix because its clean isolated
@@ -113,7 +116,7 @@ python scripts/run_experiments.py --config configs/a100_scaleup.yaml --dry-run -
 ```
 
 ```bash
-# Preview the default nightly matrix
+# Preview the broader A10G matrix
 python scripts/run_experiments.py --config configs/main.yaml --dry-run --model llama8b
 ```
 
@@ -125,7 +128,7 @@ python scripts/run_experiments.py --config configs/main.yaml --only-baselines --
 # IdleKV study on the stable A10G path
 python scripts/run_experiments.py --config configs/main.yaml --only-idlekv --model llama8b
 
-# Full workshop-scale suite (stable default matrix)
+# Broader A10G exploratory suite
 python scripts/run_experiments.py --config configs/main.yaml --model llama8b --seed 42
 ```
 
@@ -191,7 +194,7 @@ idle windows.
 Verified current operating point on this box:
 - baseline matrix supports `RULER 4K` plus `LongBench`
 - IdleKV/ablation matrix defaults to `RULER 4K` at `r=0.7`
-- `8K` IdleKV remains a follow-up target and is not the default nightly setting
+- `8K` IdleKV remains a follow-up target and is not part of the current default A10G path
 - `sync_refresh` is implemented but not part of the default A10G sweep because
   its clean isolated `4K` path still OOMs
 - `LongBench + IdleKV` remains follow-up work until the decode cache path is

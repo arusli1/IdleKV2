@@ -37,7 +37,7 @@ evaluation:
     idlekv: [ruler]
     ablation_buffer: [ruler]
   ruler:
-    # A10G nightly default: 4K is stable for the real IdleKV path.
+    # A10G default path: 4K is stable for the real IdleKV path.
     # Use --ruler-context-lengths 4096,8192 for follow-up runs on larger-memory GPUs
     # or after additional memory optimization work.
     context_lengths: [4096]
@@ -72,7 +72,7 @@ baselines:
     note: "Measured at same wall-clock as IdleKV"
 
 # `sync_refresh` remains implemented in the runner, but it is not part of the
-# default A10G nightly suite because the clean isolated 4K path still OOMs on
+# default A10G matrix because the clean isolated 4K path still OOMs on
 # this 24GB GPU. Run it explicitly as follow-up work after Phase 2 memory
 # optimization or on larger-memory hardware.
 

@@ -7,7 +7,8 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
 - Core runtime is implemented and the current test suite passes.
 - The delayed-query pilot is validated.
 - The experiment runner is real and resumable; it is no longer a mock scaffold.
-- The repo is intentionally scoped to a stable single-A10G workshop-scale matrix.
+- The repo is intentionally scoped to a stable single-A10G matrix with a
+  sharper `SCALE 2026` workshop-core path on top.
 - A reduced preliminary IdleKV scout is now complete and is more informative
   than the original long baseline-first queue for choosing the next runs.
 - The Qwen seed follow-up scout is also complete and has materially narrowed
@@ -133,7 +134,7 @@ Decision read:
 Tracked snapshot:
 - `tracked_results/qwen_seed_followup/`
 
-## Stable Default Run Tonight
+## Stable Default A10G Matrix
 
 This is the scoped default matrix for a single `A10G 24GB`.
 
@@ -170,14 +171,15 @@ Seeds:
 
 ## Not In The Default A10G Matrix
 
-These are intentionally excluded from the default overnight run on this machine:
+These are intentionally excluded from the default scoped run on this machine:
 - `sync_refresh`
 - `LongBench + IdleKV`
 - `8K RULER`
 
 Why:
 - the remaining hard memory limit is long decode/cache growth on a `24GB` card
-- the default matrix is the set we believe is worth running tonight without pretending broader scope is already stable
+- the default matrix is the set we believe is worth running on this hardware
+  without pretending broader scope is already stable
 
 ## If Better Hardware Becomes Available
 
