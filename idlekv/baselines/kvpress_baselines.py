@@ -8,6 +8,8 @@ sync refresh (RefreshKV-style) through kvpress.
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from idlekv.utils.generation import greedy_generation_config
+
 try:
     import kvpress
     from kvpress import (
@@ -56,11 +58,12 @@ def run_with_press(model, tokenizer, input_ids, press, max_new_tokens=128):
     Returns:
         dict with 'output_ids', 'past_key_values', 'text'
     """
+    generation_config = greedy_generation_config(model)
     with torch.no_grad(), press(model):
         outputs = model.generate(
             input_ids,
+            generation_config=generation_config,
             max_new_tokens=max_new_tokens,
-            do_sample=False,
             use_cache=True,
         )
 

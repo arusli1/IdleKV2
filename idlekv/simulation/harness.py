@@ -16,6 +16,7 @@ from typing import Optional, Dict, List, Union
 
 from idlekv.core.compression import CompressedKVManager
 from idlekv.core.scheduler import RefinementResult
+from idlekv.utils.generation import greedy_generation_config
 from idlekv.utils.kv_cache import cache_size, get_layer_kv
 
 
@@ -103,6 +104,7 @@ def simulate_agentic_workload(
     refinement_results = []
 
     print(f"    Simulating agentic workload (max {config.max_gen_tokens} tokens)...")
+    generation_config = greedy_generation_config(model)
 
     with torch.no_grad():
         while generated_tokens < config.max_gen_tokens:
@@ -128,8 +130,8 @@ def simulate_agentic_workload(
                 output = model.generate(
                     current_input[:, -1:] if generated_tokens > 0 else current_input,
                     past_key_values=past_key_values,
+                    generation_config=generation_config,
                     max_new_tokens=tokens_to_generate,
-                    do_sample=False,
                     pad_token_id=tokenizer.eos_token_id,
                     use_cache=True
                 )
@@ -137,8 +139,8 @@ def simulate_agentic_workload(
                 # Full cache baseline
                 output = model.generate(
                     current_input,
+                    generation_config=generation_config,
                     max_new_tokens=tokens_to_generate,
-                    do_sample=False,
                     pad_token_id=tokenizer.eos_token_id,
                     use_cache=True
                 )

@@ -6,6 +6,7 @@ from typing import Optional, Union
 import torch
 
 from idlekv.core.compression import CompressedKVManager
+from idlekv.utils.generation import greedy_generation_config
 from idlekv.utils.kv_cache import get_layer_kv
 
 
@@ -112,12 +113,13 @@ def generate_text(
     if manager is None:
         press_ctx = press(model) if press is not None else nullcontext()
         attention_mask = torch.ones_like(input_ids, device=input_ids.device)
+        generation_config = greedy_generation_config(model)
         with torch.inference_mode(), press_ctx:
             output_ids = model.generate(
                 input_ids,
                 attention_mask=attention_mask,
+                generation_config=generation_config,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
                 use_cache=True,
                 pad_token_id=tokenizer.eos_token_id,
             )
