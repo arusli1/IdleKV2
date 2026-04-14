@@ -2,6 +2,9 @@
 
 Complete setup instructions for running IdleKV experiments on AWS A10G instances.
 
+Fresh handoff on this machine:
+- read [STATUS.md](STATUS.md) first for current scope, validated results, tonight's run plan, and the larger-GPU follow-up path
+
 ## Prerequisites
 
 - AWS A10G instance with CUDA drivers installed
@@ -74,7 +77,7 @@ pip install kvpress  # Optional, for baseline comparisons
 ```bash
 # Run test suite
 make test
-# Expected output: ====================== 23 passed ======================
+# Expected output: tests should pass; current repo state is `41 passed`
 ```
 
 ### 3.2 Test Model Access

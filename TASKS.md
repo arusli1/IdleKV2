@@ -4,6 +4,9 @@
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
+Fresh handoff:
+- read `STATUS.md` first for the current scoped run plan, validated pilot, and scale-up path
+
 ---
 
 ## 🧪 Validation (~20 min)
@@ -39,7 +42,7 @@
 
 | Task                        | Files                     | Runtime    | Exit Criteria                                   |
 | --------------------------- | ------------------------- | ---------- | ----------------------------------------------- |
-| **Shadow buffer ablation**  | —                         | ~2-3 hours | 5 buffer sizes × RULER r=0.5 × multiple seeds   |
+| **Shadow buffer ablation**  | —                         | ~2-3 hours | 5 buffer sizes × RULER `r=0.7` × multiple seeds |
 | **Compression ratio sweep** | —                         | ~2-3 hours | r=0.3/0.5/0.7 × IdleKV × RULER × multiple seeds |
 | **Phase comparison**        | —                         | ~2-3 hours | Phase 1 vs 2 vs both × 2 models × benchmarks    |
 | **Figure generation**       | `scripts/plot_figures.py` | ~15 min    | All PDFs in `figures/` directory                |

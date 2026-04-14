@@ -2,6 +2,15 @@
 
 Treating agentic idle time as a first-class compute resource for KV cache quality recovery. IdleKV runs refinement operations during tool-call pauses in agentic LLM workflows to improve compressed KV cache quality without affecting user-perceived latency.
 
+## Start Here
+
+If you are taking over this repo on a fresh SSH/Codex session, read these in order:
+
+1. [STATUS.md](STATUS.md)
+2. [SETUP.md](SETUP.md)
+3. [TASKS.md](TASKS.md)
+4. [`configs/main.yaml`](configs/main.yaml)
+
 ## Setup
 
 ### Mac Development (CPU)
@@ -81,6 +90,10 @@ python scripts/plot_figures.py --results-dir results/
 ## Repository Structure
 ```
 IdleKV/
+├── STATUS.md                # Current scope, handoff, and run plan
+├── README.md                # High-level project entrypoint
+├── SETUP.md                 # Environment and run instructions
+├── TASKS.md                 # Execution checklist and experiment plan
 ├── idlekv/
 │   ├── core/                    # Core IdleKV components
 │   │   ├── compression.py       # CompressedKVManager (main interface)
