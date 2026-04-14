@@ -181,7 +181,7 @@ def main():
     if device == "cuda":
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             device_map="auto",
             attn_implementation="sdpa",
         )
@@ -189,7 +189,7 @@ def main():
         # CPU configuration
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
-            torch_dtype=torch.float32,  # Use float32 for CPU
+            dtype=torch.float32,  # Use float32 for CPU
             device_map="cpu",
         )
     model.eval()
