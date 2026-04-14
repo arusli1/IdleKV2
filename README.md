@@ -65,6 +65,11 @@ Use explicit follow-up overrides for `8K` RULER, `sync_refresh`, or
 `LongBench + IdleKV` once decode/Phase 2 memory work improves or you move to a
 larger-memory GPU.
 
+For a larger-memory scale-up run, start from:
+```bash
+python scripts/run_experiments.py --config configs/a100_scaleup.yaml --dry-run --model llama8b
+```
+
 ```bash
 # Preview the default nightly matrix
 python scripts/run_experiments.py --config configs/main.yaml --dry-run --model llama8b

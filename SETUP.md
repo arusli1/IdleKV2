@@ -183,6 +183,9 @@ the heavier IdleKV readout:
 - `LongBench + IdleKV` is follow-up work until decode-time cache growth is
   optimized beyond the current HF `DynamicCache` concat path
 
+If you move to an A100-class GPU later, use `configs/a100_scaleup.yaml` as the
+starting point rather than mutating the single-A10G default in place.
+
 ### 5.2 Run Experiments
 ```bash
 # Full experiment suite (several hours)
@@ -212,6 +215,12 @@ python scripts/run_experiments.py \
     --model llama8b \
     --benchmarks longbench \
     --longbench-max-input-length 3840
+
+# A100-class scale-up dry run
+python scripts/run_experiments.py \
+    --config configs/a100_scaleup.yaml \
+    --dry-run \
+    --model llama8b
 ```
 
 ### 5.3 Monitor Progress

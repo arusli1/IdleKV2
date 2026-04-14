@@ -83,6 +83,15 @@ If you later get an `A100 40GB` or `80GB`, extend the matrix in this order:
 3. `sync_refresh`
 4. broader cross-model / seed coverage if needed
 
+Scale-up config:
+- `configs/a100_scaleup.yaml`
+- intended for A100-class GPUs
+- broadens the default matrix to:
+  - `RULER 4K + 8K`
+  - `LongBench + IdleKV`
+  - `sync_refresh`
+- keeps the main A10G config untouched and honest
+
 Do not automatically discard the A10G results:
 - keep them as the constrained-hardware study
 - add larger-GPU runs as the expanded scale-up tier

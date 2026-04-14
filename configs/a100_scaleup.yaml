@@ -1,0 +1,82 @@
+# IdleKV scale-up configuration for larger-memory GPUs (A100 40GB/80GB class)
+# Run: python scripts/run_experiments.py --config configs/a100_scaleup.yaml
+
+hardware: a100_40gb_plus
+
+models:
+  - name: meta-llama/Llama-3.1-8B-Instruct
+    short: llama8b
+  - name: Qwen/Qwen2.5-7B-Instruct
+    short: qwen7b
+
+compression:
+  ratios: [0.3, 0.5, 0.7]
+  primary_ratio: 0.7
+  shadow_buffer_size: 256
+  query_buffer_size: 32
+  # Larger-memory GPUs can keep the full prefill backup on-device by default.
+  offload_full_kv: false
+
+simulation:
+  tool_call_interval: 100
+  duration_median_ms: 1000
+  duration_min_ms: 100
+  duration_max_ms: 10000
+
+evaluation:
+  seeds: [42, 123, 456]
+  benchmarks:
+    - ruler
+    - longbench
+  # Scale-up/default A100 matrix:
+  # - broad baseline readout on RULER + LongBench
+  # - IdleKV main sweep on both benchmarks
+  # - shadow-buffer ablations stay on RULER unless explicitly expanded
+  benchmarks_by_type:
+    baseline: [ruler, longbench]
+    idlekv: [ruler, longbench]
+    ablation_buffer: [ruler]
+  ruler:
+    context_lengths: [4096, 8192]
+  longbench:
+    # Starting point for larger-memory GPUs; raise only after verifying host-side
+    # decode-memory behavior on the specific instance.
+    max_input_length: 8192
+  throughput:
+    num_warmup_tokens: 32
+    num_measure_tokens: 128
+
+baselines:
+  - name: full_cache
+    ratio: null
+  - name: snapkv_0.7
+    ratio: 0.7
+    method: snapkv
+  - name: snapkv_0.5
+    ratio: 0.5
+    method: snapkv
+  - name: snapkv_0.3
+    ratio: 0.3
+    method: snapkv
+  - name: h2o_0.5
+    ratio: 0.5
+    method: h2o
+  - name: streaminglm
+    method: streaminglm
+  - name: sync_refresh
+    ratio: 0.5
+    method: snapkv
+    refresh_stride: 15
+  - name: snapkv_0.3_isocompute
+    ratio: 0.3
+    method: snapkv
+    note: "Measured at same wall-clock as IdleKV"
+
+idlekv:
+  idle_budgets_ms: [0, 50, 100, 500, 1000, 2000, 5000]
+  phases: [1, 2, "1+2"]
+
+ablations:
+  shadow_buffer_sizes: [0, 64, 128, 256, 512]
+
+output_dir: results/
