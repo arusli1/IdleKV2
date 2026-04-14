@@ -2,6 +2,20 @@
 
 Read this first if you are taking over the repo on a fresh SSH/Codex session.
 
+## 30-Second Handoff
+
+- Completed evidence:
+  - delayed-query pilot: compressed `91.7%` -> `100.0%` with `27.4ms` Phase 1
+  - Qwen scout: `0ms` `0.877` -> `100ms Phase 1` `0.903`
+- Current paper scope:
+  - `SCALE 2026` workshop-core story is `Phase 1 @ 100ms`
+  - `Phase 2` is exploratory/debug-only
+- Run next:
+  - `scripts/throughput_spotcheck.py`
+  - `configs/llama_hardness_probe.yaml`
+  - `configs/scale_core.yaml`
+  - `configs/scale_mechanism_ablation.yaml`
+
 ## Current State
 
 - Core runtime is implemented and the current test suite passes.

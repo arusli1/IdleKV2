@@ -1,4 +1,4 @@
-# IdleKV TODO List
+# IdleKV Execution Plan
 
 **✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`44 passed`).
 

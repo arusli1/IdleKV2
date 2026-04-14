@@ -22,6 +22,11 @@ Snapshots currently tracked:
   - established that long-budget `P1+P2` currently fails badly enough that it
     should be removed from the workshop-core story
 
+Current best read:
+- delayed-query pilot: compressed `91.7%` -> `100.0%`
+- informative Qwen slice: `0ms` `0.877` -> `100ms Phase 1` `0.903`
+- Phase 2: not part of the current workshop-core claim
+
 How to use this folder:
 - read the README in each snapshot subdirectory first
 - treat these files as preserved milestones, not the complete result store

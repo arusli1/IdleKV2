@@ -126,7 +126,8 @@ class SyncRefreshBaseline:
         from idlekv.core.phase2_refresh import phase2_refresh
         from idlekv.core.query_buffer import QueryBuffer
 
-        # Create a dummy query buffer from the last token
-        # (In a real implementation, would track hidden states)
-        # For now, this is a simplified version
-        return past_key_values  # TODO: implement full sync refresh
+        # The broader runner still exposes `sync_refresh` as a named baseline,
+        # but this branch does not implement a faithful synchronous refresh yet.
+        # Keep the no-op behavior explicit so the scoped workshop path does not
+        # accidentally imply measured support for it.
+        return past_key_values

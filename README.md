@@ -2,15 +2,24 @@
 
 Treating agentic idle time as a first-class compute resource for KV cache quality recovery. IdleKV runs refinement operations during tool-call pauses in agentic LLM workflows to improve compressed KV cache quality without affecting user-perceived latency.
 
+## Current Read
+
+- The strongest supported claim is `Phase 1 @ 100ms` under delayed-query drift.
+- `qwen7b` on `RULER 4K` is the informative workshop-core slice; `llama8b` at
+  `RULER 4K` is ceiling.
+- `Phase 2` is currently exploratory/debug-only and is not part of the core
+  `SCALE 2026` story.
+
 ## Start Here
 
 If you are taking over this repo on a fresh SSH/Codex session, read these in order:
 
 1. [STATUS.md](STATUS.md)
-2. [SETUP.md](SETUP.md)
-3. [TASKS.md](TASKS.md)
-4. [`configs/scale_core.yaml`](configs/scale_core.yaml)
-5. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the workshop-core scope on a single A10G
+2. [tracked_results/README.md](tracked_results/README.md)
+3. [SETUP.md](SETUP.md)
+4. [TASKS.md](TASKS.md)
+5. [`configs/scale_core.yaml`](configs/scale_core.yaml)
+6. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the workshop-core scope on a single A10G
 
 ## Setup
 

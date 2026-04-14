@@ -384,56 +384,37 @@ throughput (tokens/sec).
 This version of the paper separates three evidence tiers.
 The measured core is the delayed-query pilot plus the reduced single-A10G scout
 described above. The broader single-A10G and A100 matrices remain in progress.
-Tables~\ref{tab:main_results}--\ref{tab:idle_budget} still contain calibrated
-placeholders for the broader scale-up study, derived from three validated prior
-measurements:
-\citet{refreshkv2025}'s 52\% gap recovery, \citet{lazyeviction2025}'s $>$95\%
-TIR rate, and Ada-KV's attention pattern drift measurements
-\citep{adakv2024}. As broader A100-scale runs complete, these ranges should be
-replaced with measured point estimates and confidence intervals.
+The current paper therefore focuses on what is already measured and uses the
+remaining tables/figures only as reserved slots for the workshop-core matrix
+that runs next.
 
 \subsection{Main Quality Results}
 
-Table~\ref{tab:main_results} presents the target quality and throughput story
-for the broader scale-up matrix on Llama-3.1-8B.
-The calibrated model predicts that SnapKV $r{=}0.5$ opens a 5--9 point RULER
-gap relative to full cache.
-It further predicts that Phase~1 alone recovers 1.5--3.0\% of that gap within
-100\,ms at no throughput cost.
-In the current measured scope, this short-idle Phase~1 behavior is the core
-supported claim.
-Longer-budget P1$+$P2 remains exploratory: the current reduced A10G scouts
-validate the robustness of Phase~1, while the current Qwen follow-up indicates
-that long-budget P1$+$P2 is not yet stable enough to support the main claim.
-Sync refresh is predicted to reach comparable quality but at
-${\sim}0.75{\times}$ throughput, consistent with the hypothesis that idle-time
-scheduling---not just the underlying quality operations---is the decisive
-advantage once the scale-up baseline is fully measured.
+Table~\ref{tab:main_results} summarizes the measured core evidence that already
+shapes the workshop-core matrix.
+Two conclusions are durable at this stage.
+First, delayed-query drift creates recoverable quality loss under aggressive
+compression.
+Second, short-idle Phase~1 repair is consistently better than the matching
+no-idle compressed baseline on the informative Qwen RULER-4K slice.
+By contrast, longer-budget P1$+$P2 remains outside the core claim because the
+current Qwen follow-up shows a severe regression rather than an incremental
+gain.
 
 \begin{table}[t]
 \centering
-\caption{Quality and throughput across the broader scale-up baselines (Llama-3.1-8B,
-calibrated predictions; see Section~\ref{sec:results}).
-``LB'' $=$ LongBench average.
-The short-idle Phase~1 result is the core supported claim in the current
-measured scope.
-The P1$+$P2 row remains exploratory placeholder data for the later scale-up
-study; sync refresh is predicted to match IdleKV quality at substantially
-lower throughput.}
+\caption{Measured core evidence that currently supports the workshop claim.
+The first row is the delayed-query mechanism gate; the remaining rows are the
+informative Qwen RULER-4K scout slices.}
 \label{tab:main_results}
 \resizebox{0.98\columnwidth}{!}{%
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Method & RULER 4K & LB & Throughput \\
+Slice & Baseline & Phase~1 @ 100\,ms & P1 only @ 1000\,ms & P1$+$P2 @ 1000\,ms \\
 \midrule
-Full cache          & 95--96\%     & 41--43   & $1.0\times$ full   \\
-SnapKV $r{=}0.3$   & 92--94\%     & 40--41   & ${\sim}0.85\times$ r0.5 \\
-SnapKV $r{=}0.5$   & 87--90\%     & 37--39   & $1.0\times$ (ref.) \\
-+~Phase~1 only      & 89--91\%     & 38--40   & $1.0\times$        \\
-+~P1$+$P2 (exploratory) & 91--93\% & 39--41 & $1.0\times$ \\
-Sync refresh        & 91--93\%     & 39--41   & ${\sim}0.75\times$ r0.5 \\
-H2O $r{=}0.5$      & 86--88\%     & 36--38   & ${\approx}1.0\times$ \\
-StreamingLLM        & 70--74\%     & 27--30   & ${\approx}1.0\times$ \\
+Delayed-query pilot (Llama, $r{=}0.7$) & 91.7\% & 100.0\% & --- & --- \\
+Qwen scout, seed 42 ($r{=}0.7$) & 0.86 & 0.90 & 0.90 & 0.667 \\
+Qwen follow-up mean, seeds 123/456 ($r{=}0.7$) & 0.877 & 0.903 & 0.903 & 0.653 \\
 \bottomrule
 \end{tabular}%
 }
@@ -442,37 +423,27 @@ StreamingLLM        & 70--74\%     & 27--30   & ${\approx}1.0\times$ \\
 \subsection{Quality-vs-Idle-Budget Curve}
 
 Table~\ref{tab:idle_budget} and Figure~\ref{fig:budget_curve} characterize
-RULER accuracy improvement as a function of idle compute budget for
-$r \in \{0.3,\,0.5,\,0.7\}$.
-The calibration predicts rapid gains in the first 100\,ms (Phase~1, token
-promotion).
-For the current measured scope, that first-100\,ms region is the key region.
-Continued gains through 100\,ms--1\,s (Phase~2, shallow layers) remain a
-scale-up hypothesis rather than a validated core claim, and the current Qwen
-follow-up suggests that this longer-budget path may require debugging before it
-belongs in the main story at all.
-More aggressive compression ratios are predicted to show larger absolute
-gains: $r{=}0.7$ recovers up to 4.3--4.7\% at a 2\,s budget compared to
-3.3--3.7\% at $r{=}0.5$, which is consistent with IdleKV's value scaling with
-the severity of the quality-throughput tradeoff.
-Across SWE-Bench trace distributions, 74\% of tool calls are expected to
-provide at least 100\,ms of idle budget, covering the full two-phase
-refinement for the majority of agentic interactions.
+RULER accuracy as a function of idle compute budget on the informative Qwen
+slice.
+The measured data only supports one strong budget claim today:
+the first 100\,ms matters.
+Going from 0\,ms to 100\,ms helps; going from 100\,ms to 1000\,ms does not
+help further for Phase~1 on this slice; and the current P1$+$P2 path is not
+stable enough to include in the workshop-core story.
 
 \begin{table}[t]
 \centering
-\caption{RULER 4K improvement vs.\ idle compute budget (calibrated
-predictions).  Most recoverable quality is captured within 1\,s; returns
-diminish beyond 500\,ms.}
+\caption{Measured Qwen RULER-4K budget sweep on the informative $r{=}0.7$
+slice. The first 100\,ms carries the durable Phase~1 signal.}
 \label{tab:idle_budget}
 \resizebox{0.98\columnwidth}{!}{%
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcccc}
 \toprule
-Budget & 0\,ms & 50\,ms & 100\,ms & 500\,ms & 1\,s & 2\,s \\
+Setting & 0\,ms & 100\,ms & 1000\,ms & Read \\
 \midrule
-$r{=}0.3$ & 0 & $+$0.8--1.2\% & $+$1.3--1.8\% & $+$1.8--2.2\% & $+$2.0--2.3\% & $+$2.1--2.4\% \\
-$r{=}0.5$ & 0 & $+$1.5--2.0\% & $+$2.5--3.0\% & $+$3.0--3.5\% & $+$3.2--3.6\% & $+$3.3--3.7\% \\
-$r{=}0.7$ & 0 & $+$2.2--2.8\% & $+$3.5--4.0\% & $+$4.0--4.5\% & $+$4.2--4.6\% & $+$4.3--4.7\% \\
+Phase~1, seed 42 & 0.86 & 0.90 & 0.90 & gain saturates by 100\,ms \\
+Phase~1, mean over seeds 123/456 & 0.877 & 0.903 & 0.903 & same pattern \\
+Phase~1$+$Phase~2, mean over seeds 123/456 & --- & --- & 0.653 & unstable; not a core claim \\
 \bottomrule
 \end{tabular}%
 }
@@ -486,11 +457,10 @@ $r \in \{0.3,\,0.5,\,0.7\}$.
 X-axis: idle budget (ms, log scale).
 Y-axis: RULER 4K improvement over no-refinement baseline.]\vspace{1.6cm}}}
 \caption{Quality recovery as a function of idle compute budget.
-Phase~1 is predicted to dominate at ${<}100$\,ms and is the main supported
-claim in the current measured scope. Phase~2 may deliver continued gains
-through 1\,s, but that longer-budget behavior remains a scale-up question
-rather than a settled result here.
-Higher compression ratios are predicted to show larger absolute recoveries.}
+This figure is reserved for the measured workshop-core plot after
+`configs/scale_core.yaml` finishes. The current evidence already supports the
+same qualitative message: the first 100\,ms matters, while the current
+long-budget P1$+$P2 path is not stable enough for the main story.}
 \label{fig:budget_curve}
 \end{figure}
 
@@ -498,73 +468,59 @@ Higher compression ratios are predicted to show larger absolute recoveries.}
 
 Figure~\ref{fig:pareto} plots RULER 4K accuracy vs.\ decode throughput for all
 methods.
-Under the calibration, IdleKV at $r{=}0.5$ appears northeast of SnapKV
-$r{=}0.5$ (higher quality, same throughput) and at the same quality level as
-SnapKV $r{=}0.3$ but with ${\sim}1.18{\times}$ the throughput.
-The current measured scope only establishes the narrower claim that Phase~1
-moves the operating point northeast of the matching static compression
-baseline.
-If longer-budget P1$+$P2 later stabilizes, sync refresh is predicted to occupy
-the same quality level but at ${\sim}0.75{\times}$ throughput---a dominated
-position.
-No static compression ratio reaches the same predicted frontier position as
-IdleKV, which is consistent with the claim that idle-time scheduling is
-necessary to achieve this tradeoff.
+That throughput figure is the next critical measurement rather than a completed
+result. The current repository contains a dedicated
+`scripts/throughput_spotcheck.py` script for this purpose.
+The workshop-core claim only needs the narrower operating-point check:
+showing that short-idle Phase~1 improves on the matching compressed baseline
+without materially changing decode speed.
 
 \begin{figure}[t]
 \centering
 \fbox{\parbox{0.88\columnwidth}{\centering\vspace{1.6cm}%
 \small[Figure~3: Quality-throughput Pareto frontier.
 Each point is one method.
-The current measured scope only requires IdleKV Phase~1 to improve quality at
-the same decode operating point; any stronger P1$+$P2 dominance remains
-exploratory.]\vspace{1.6cm}}}
-\caption{Quality-throughput Pareto frontier (Llama-3.1-8B, RULER 4K).
-\textbf{IdleKV Phase~1} at $r{=}0.5$ is predicted to improve on SnapKV
-$r{=}0.5$ at the same decode operating point. Any stronger claim about
-P1$+$P2 dominating sync refresh is deferred to the later scale-up study.}
+The workshop-core version only needs the short-idle Phase~1 operating-point
+check; broader Pareto claims are deferred until measured.]\vspace{1.6cm}}}
+\caption{Reserved throughput-quality plot for the workshop-core matrix.
+The only required claim for this version is that short-idle Phase~1 improves
+quality over the matching compressed baseline without materially changing the
+decode operating point.}
 \label{fig:pareto}
 \end{figure}
 
 \subsection{Ablation: Phase Contribution and Cross-Model Generalization}
 
 Table~\ref{tab:ablation} isolates Phase~1 and Phase~2 contributions.
-The calibration assigns Phase~1 a consistent 1.5--3.0\% RULER gain within
-100\,ms and coverage for 23\% of SWE-Bench tool calls that are too short for
-Phase~2.
-Phase~2 is then predicted to add an additional 1--2\% for the 51\% of calls
-lasting 100\,ms--1\,s.
-In the current measured scope, only the Phase~1 part of this story should be
-treated as durable; the longer-budget Qwen follow-up currently points in the
-opposite direction for P1$+$P2.
-The resulting weighted gain across 74\% of tool calls is predicted to be
-2.5--3.5\% RULER accuracy---comfortably above measurement noise if validated
-empirically.
+The current workshop-core ablation is narrower: it asks whether the shadow
+buffer is necessary for the shortlisted Phase~1 path.
+That is the role of `configs/scale_mechanism_ablation.yaml`.
+We explicitly do not treat Phase~2 as part of the current ablation story,
+because the Qwen follow-up indicates that the existing long-budget path is not
+yet stable enough for a positive claim.
 
 \begin{table}[t]
 \centering
-\caption{Phase ablation on Llama-3.1-8B RULER 4K (SnapKV $r{=}0.5$ base).
-Phase~1 is the core supported claim. Phase~2 remains exploratory until the
-long-budget scout and larger-GPU matrix confirm that it is stable and worth
-including in the main story.}
+\caption{Reserved mechanism ablation slot for the workshop-core matrix.
+The active question is whether the shadow buffer matters for the shortlisted
+Phase~1 @ 100\,ms path.}
 \label{tab:ablation}
 \resizebox{0.98\columnwidth}{!}{%
 \begin{tabular}{lccc}
 \toprule
-Configuration & RULER $\Delta$ & Budget (ms) & \% Tool Calls Covered \\
+Configuration & Benchmark & Budget (ms) & Status \\
 \midrule
-No refinement    & 0            & 0       & 100\% \\
-Phase~1 only     & $+$1.5--3.0\% & $<$100  & 74\% \\
-Phase~1 + Phase~2 & $+$2.5--3.5\% & $<$1000 & 51\% \\
+SnapKV $r{=}0.7$ baseline & Qwen RULER 4K & 0 & reserved for measured run \\
+IdleKV Phase~1, buffer $0$ & Qwen RULER 4K & 100 & reserved for measured run \\
+IdleKV Phase~1, buffer $256$ & Qwen RULER 4K & 100 & reserved for measured run \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 
-Qwen2.5-7B replicates the logarithmic budget curve shape with slightly
-different per-layer timing: 18--45\,ms per layer vs.\ 15--40\,ms for Llama,
-yielding ${\sim}0.9{\times}$ the per-budget gain.
-The fundamental viability of both phases is architecture-independent.
+At present, Qwen2.5-7B is the informative model for method selection while
+Llama-3.1-8B at RULER 4K is mostly ceiling. The repo therefore includes a small
+Llama hardness probe rather than claiming current cross-model parity.
 
 % ---------------------------------------------------------------
 %  5. Limitations
