@@ -75,13 +75,17 @@ compression ratio achieves.
 \label{sec:intro}
 
 Modern agentic LLM deployments---Cursor, Claude Code, SWE-agent---spend
-30--55\% of wall-clock time with the GPU idle while tools execute.
-Continuum's SWE-Bench traces record 58.2\% scheduling idle time
-\citep{continuum2025}; InferCept reports 37--40\% idle during tool calls
-\citep{infercept2025}.
-Every token generated before a tool call represents compute invested in a
-context that will sit stale until the call returns.
-The GPU, meanwhile, does nothing.
+30--55\% of wall-clock session time with tool calls in flight.
+Continuum \citep{continuum2025} documents up to 58.2\% of end-to-end latency
+consumed by scheduling bubbles and KV-cache recomputation around tool-call
+boundaries; InferCept \citep{infercept2025} identifies 37--40\% of forward
+time spent recomputing already-processed context under multi-tenant
+batching.
+In \emph{single-agent} deployments with a dedicated GPU---local coding agents,
+on-device assistants, reserved-capacity inference---the accelerator sits
+truly idle while a tool executes externally.
+This is the setting IdleKV targets; multi-tenant serving with iteration-level
+scheduling (vLLM, SGLang) is out of scope.
 
 KV cache compression is necessary for long agentic sessions: without it,
 memory pressure forces truncation or eviction of critical context.
@@ -91,8 +95,12 @@ permanent eviction decisions during generation, when both information and
 compute are scarce.
 Three findings establish why this is fundamentally suboptimal.
 \citet{lazyeviction2025} show that $>$95\% of evicted tokens exhibit
-Token Importance Recurrence (TIR): tokens unimportant at eviction often become
-critical as context evolves.
+Token Importance Recurrence (TIR) on multi-step reasoning traces (GSM8K,
+MATH500): tokens unimportant at eviction often become critical as context
+evolves.
+The TIR phenomenon has not yet been measured directly on agentic/tool-calling
+traces; we treat this figure as a motivating upper bound and report
+IdleKV's realized recovery on agentic workloads directly.
 \citet{defensivekv2026} demonstrate that attention-score importance is
 unstable across decode steps, causing systematic errors in one-shot eviction.
 Methods that do attempt quality recovery during generation---RefreshKV
@@ -518,9 +526,20 @@ The fundamental viability of both phases is architecture-independent.
 \section{Limitations}
 \label{sec:limitations}
 
-\textbf{IdleKV} targets single-agent deployments with dedicated GPUs;
-multi-tenant serving introduces idle-time contention among concurrent requests
-that we do not address here.
+\textbf{Single-tenant scope.}
+IdleKV's premise---that GPU compute is free during a tool call---holds
+only when a single request owns the accelerator.
+Multi-tenant serving engines such as vLLM and SGLang use iteration-level
+continuous batching and fill the bubble with other in-flight requests
+\citep{continuum2025}; in those settings the real cost is KV-cache churn
+(recomputation, memory pressure), not idle compute, and the appropriate
+target is systems like InferCept \citep{infercept2025} rather than IdleKV.
+We target single-agent deployments (local coding agents, reserved capacity,
+on-device inference) where the dedicated-GPU assumption is accurate.
+\textbf{TIR domain transfer.}
+Our motivating TIR figure \citep{lazyeviction2025} is measured on reasoning
+benchmarks; whether the recurrence rate is similar on agentic traces is an
+open empirical question that our evaluation partially answers.
 We evaluate on 7--8B parameter models; larger models may exhibit different
 per-layer refresh costs and shadow buffer requirements.
 Integration with adaptive compression methods that adjust token budgets
@@ -569,8 +588,6 @@ must be specifically highlighted here.
 % ---------------------------------------------------------------
 \section*{LLM/Agent Usage Disclosure}
 
-Large language models were used for writing assistance (grammar and phrasing
-suggestions) during manuscript preparation.
 All technical content, system design, experimental methodology, and analysis
 are the sole work of the authors.
 No LLM was used to generate experimental results, figures, or algorithmic

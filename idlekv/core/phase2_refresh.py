@@ -47,17 +47,18 @@ def phase2_refresh(
         max_layers: process at most this many layers (for partial refresh)
 
     Returns:
-        Updated past_key_values (same format as input)
+        Tuple of (updated past_key_values, layers_refreshed)
     """
     recent_h = query_buffer.get()
     if recent_h.shape[0] == 0:
-        return past_key_values
+        return past_key_values, 0
 
     from idlekv.utils.kv_cache import build_cache, clone_cache
 
     compressed_layers = []
     total_layers = num_layers(past_key_values)
     layers_to_process = min(total_layers, max_layers or total_layers)
+    layers_refreshed = 0
 
     for layer_idx in range(layers_to_process):
         if interrupt_flag is not None and interrupt_flag():
@@ -125,6 +126,7 @@ def phase2_refresh(
             new_v = selected_v.unsqueeze(0)
 
         compressed_layers.append((new_k, new_v))
+        layers_refreshed += 1
 
         # Free GPU memory from the loaded full KV if it was transferred
         if full_k.device != full_kv_store.device:
@@ -136,7 +138,7 @@ def phase2_refresh(
         compressed_layers.append((current_k, current_v))
 
     # Return in same format as input
-    return build_cache(compressed_layers)
+    return build_cache(compressed_layers), layers_refreshed
 
 
 class FullKVStore:

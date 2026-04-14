@@ -26,6 +26,7 @@ def phase1_rescore(
     budget_per_layer: int,
     num_layers_arg: int,
     interrupt_flag: Optional[callable] = None,
+    num_generated: int = 0,
 ):
     """
     Re-score retained + shadow tokens using recent queries and rebuild cache.
@@ -58,9 +59,19 @@ def phase1_rescore(
             break
 
         # Get current retained KV using utility function
-        retained_k, retained_v = get_layer_kv(past_key_values, layer_idx)  # [B, H, S, D]
-        B, H, S_retained, D = retained_k.shape
+        full_k, full_v = get_layer_kv(past_key_values, layer_idx)  # [B, H, S, D]
+        B, H, S_full, D = full_k.shape
         assert B == 1, "Phase 1 assumes batch_size=1"
+
+        # Split prefill part (re-scorable) from generated tail (always preserved).
+        # Generated tokens carry committed outputs — evicting them would corrupt
+        # the model's self-attention over its own prior generation.
+        S_gen = min(num_generated, S_full)
+        S_prefill = S_full - S_gen
+        prefill_k = full_k[:, :, :S_prefill, :]
+        prefill_v = full_v[:, :, :S_prefill, :]
+        gen_k = full_k[:, :, S_prefill:, :]
+        gen_v = full_v[:, :, S_prefill:, :]
 
         # Get shadow KV for this layer
         shadow_k, shadow_v = shadow_buffer.get(layer_idx)  # [H, S_shadow, D]
@@ -68,49 +79,60 @@ def phase1_rescore(
 
         if S_shadow == 0:
             # No shadow tokens — nothing to swap, keep current layer
-            compressed_layers.append((retained_k, retained_v))
+            compressed_layers.append((full_k, full_v))
             continue
 
-        # Concatenate retained + shadow as candidates
-        # retained_k: [1, H, S_retained, D], shadow_k: [H, S_shadow, D]
+        # Concatenate prefill + shadow as candidates (generated is kept aside)
         all_k = torch.cat([
-            retained_k.squeeze(0),  # [H, S_retained, D]
+            prefill_k.squeeze(0),   # [H, S_prefill, D]
             shadow_k,               # [H, S_shadow, D]
         ], dim=1)  # [H, S_total, D]
 
         all_v = torch.cat([
-            retained_v.squeeze(0),
+            prefill_v.squeeze(0),
             shadow_v,
         ], dim=1)
 
         S_total = all_k.shape[1]
 
-        # Project recent hidden states to queries for this layer
-        # Access Q projection weights from the model
+        # Project recent hidden states through full Q projection (keeping all
+        # Q heads). We score attention per-Q-head then mean across GQA groups,
+        # which matches kvpress SnapKV. Avoids the pre-attention Q-averaging
+        # approximation that discards within-group head specialization.
         q_proj = _get_q_proj(model, layer_idx)
-        # recent_h: [num_queries, hidden_dim]
-        queries = _project_queries_with_rope(recent_h, q_proj, H, D, model, layer_idx)  # [H, num_queries, D]
+        # Returns [num_q_heads, num_queries, D] with no RoPE applied to queries.
+        # Keys retain their original RoPE phases; scoring without query RoPE is
+        # an approximation but preserves relative ordering far better than
+        # applying RoPE at a fabricated position 0.
+        q_all_heads = _project_queries_all_heads(recent_h, q_proj, D)
+        num_q_heads = q_all_heads.shape[0]
 
-        # Score all candidates: mean attention across recent queries
-        # scores: [H, S_total]
-        scores = _compute_importance_scores(queries, all_k, D)
-
-        # Select top-k per head (or globally — start with per-head for simplicity)
-        # Use mean score across heads for selection
+        # Score all candidates per-Q-head, then group-mean to per-KV-head,
+        # then head-mean for token selection. Budget is for prefill tokens only;
+        # generated tokens are always kept.
+        budget_prefill = max(0, budget_per_layer - S_gen)
+        scores = _compute_importance_scores_gqa(
+            q_all_heads, all_k, D, num_q_heads, H
+        )  # [H, S_total]
         mean_scores = scores.mean(dim=0)  # [S_total]
-        _, top_indices = mean_scores.topk(min(budget_per_layer, S_total))
+        _, top_indices = mean_scores.topk(min(budget_prefill, S_total))
         top_indices = top_indices.sort().values
 
-        # Rebuild cache with selected tokens
-        new_k = all_k[:, top_indices, :].unsqueeze(0)  # [1, H, budget, D]
-        new_v = all_v[:, top_indices, :].unsqueeze(0)
+        # Rebuild cache: selected prefill/shadow tokens + generated tail
+        sel_k = all_k[:, top_indices, :].unsqueeze(0)  # [1, H, budget_prefill, D]
+        sel_v = all_v[:, top_indices, :].unsqueeze(0)
+        if S_gen > 0:
+            new_k = torch.cat([sel_k, gen_k], dim=2)
+            new_v = torch.cat([sel_v, gen_v], dim=2)
+        else:
+            new_k = sel_k
+            new_v = sel_v
 
-        # Push the newly evicted tokens (those NOT selected) to shadow buffer
-        all_indices = torch.arange(S_total, device=all_k.device)
+        # Push the newly evicted candidates (not selected, and originally from
+        # the prefill/shadow pool) to shadow buffer.
         evicted_mask = torch.ones(S_total, dtype=torch.bool, device=all_k.device)
         evicted_mask[top_indices] = False
-        evicted_indices = all_indices[evicted_mask]
-
+        evicted_indices = torch.arange(S_total, device=all_k.device)[evicted_mask]
         if evicted_indices.numel() > 0:
             evicted_k = all_k[:, evicted_indices, :]
             evicted_v = all_v[:, evicted_indices, :]
@@ -134,106 +156,97 @@ def _get_q_proj(model, layer_idx: int):
     return layer.self_attn.q_proj
 
 
-def _project_queries_with_rope(
+def _project_queries_all_heads(
     hidden_states: torch.Tensor,
     q_proj: torch.nn.Linear,
-    num_kv_heads: int,
     head_dim: int,
-    model,
-    layer_idx: int,
 ) -> torch.Tensor:
     """
-    Project hidden states through Q projection and apply RoPE.
+    Project hidden states through Q projection, returning all Q heads.
 
-    Fix Bug 2: Keys in cache have RoPE baked in, so queries need RoPE too.
-    Uses pragmatic shortcut: apply RoPE at position 0 for all queries
-    (treating them as position-independent probes). Preserves relative ranking.
+    No RoPE is applied to the queries. Keys in the cache retain their
+    original RoPE phases (standard SnapKV/H2O/kvpress convention). Scoring
+    without query RoPE is an approximation; the alternative (fabricated
+    position 0) is worse because it introduces a per-head phase twist
+    unrelated to the real attention geometry.
 
     Args:
         hidden_states: [num_queries, hidden_dim]
         q_proj: Q projection layer
-        num_kv_heads: number of KV heads (GQA groups)
         head_dim: dimension per head
-        model: HF model (for RoPE access)
-        layer_idx: layer index
 
     Returns:
-        [num_kv_heads, num_queries, head_dim] with RoPE applied
+        [num_q_heads, num_queries, head_dim]
     """
     with torch.no_grad():
         q = q_proj(hidden_states)  # [num_queries, num_q_heads * head_dim]
-
     num_queries = q.shape[0]
     num_q_heads = q.shape[1] // head_dim
-    q = q.view(num_queries, num_q_heads, head_dim)  # [Q, num_q_heads, D]
-
-    # Apply RoPE at dummy position 0 for all queries
-    # This is an approximation but preserves relative ranking
-    try:
-        layer = model.model.layers[layer_idx]
-        if hasattr(layer.self_attn, 'rotary_emb'):
-            # Llama-style RoPE
-            cos, sin = layer.self_attn.rotary_emb(q, seq_len=1)
-            # Apply to all queries at position 0
-            position_ids = torch.zeros(1, num_queries, dtype=torch.long, device=q.device)
-            q = _apply_rotary_pos_emb(q, cos, sin, position_ids)
-    except Exception:
-        # If RoPE fails, continue without it (graceful degradation)
-        # The ranking will be imperfect but still useful
-        pass
-
-    q = q.permute(1, 0, 2)  # [num_q_heads, Q, D]
-
-    # If GQA: average Q heads within each KV group
-    if num_q_heads != num_kv_heads:
-        group_size = num_q_heads // num_kv_heads
-        q = q.view(num_kv_heads, group_size, num_queries, head_dim).mean(dim=1)
-
-    return q  # [num_kv_heads, num_queries, head_dim]
+    q = q.view(num_queries, num_q_heads, head_dim).permute(1, 0, 2).contiguous()
+    return q  # [num_q_heads, num_queries, head_dim]
 
 
-def _apply_rotary_pos_emb(q, cos, sin, position_ids):
-    """
-    Apply rotary position embedding. Simplified version.
-    """
-    def rotate_half(x):
-        x1 = x[..., : x.shape[-1] // 2]
-        x2 = x[..., x.shape[-1] // 2 :]
-        return torch.cat((-x2, x1), dim=-1)
-
-    # Simplified: just apply at position 0
-    cos = cos[0:1, :]  # [1, head_dim]
-    sin = sin[0:1, :]  # [1, head_dim]
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    return q_embed
-
-
-# Legacy function for backward compatibility
-def _project_queries(hidden_states, q_proj, num_kv_heads, head_dim):
-    """Legacy version without RoPE. Deprecated."""
-    return _project_queries_with_rope(hidden_states, q_proj, num_kv_heads, head_dim, None, 0)
-
-
-def _compute_importance_scores(
-    queries: torch.Tensor,
+def _compute_importance_scores_gqa(
+    q_all_heads: torch.Tensor,
     keys: torch.Tensor,
     head_dim: int,
+    num_q_heads: int,
+    num_kv_heads: int,
 ) -> torch.Tensor:
     """
-    Compute mean attention score for each key across all queries.
+    Compute per-KV-head importance scores under GQA.
+
+    Matches kvpress SnapKV: compute attention per Q head against its
+    group's KV head, softmax, mean over queries, then mean across the
+    group-size Q heads that share each KV head.
 
     Args:
-        queries: [H, num_queries, D]
-        keys: [H, S_total, D]
+        q_all_heads: [num_q_heads, num_queries, D]
+        keys: [num_kv_heads, S_total, D] — keys for this layer (one per KV head)
         head_dim: for scaling
+        num_q_heads: number of Q heads
+        num_kv_heads: number of KV heads (== GQA groups)
 
     Returns:
-        [H, S_total] importance scores
+        [num_kv_heads, S_total] importance per KV head
     """
     scale = 1.0 / math.sqrt(head_dim)
-    # [H, num_queries, S_total]
+    group_size = num_q_heads // num_kv_heads
+    num_queries = q_all_heads.shape[1]
+    S_total = keys.shape[1]
+
+    # Expand keys to match Q heads: each KV head's keys used by group_size Q heads
+    # keys_expanded: [num_q_heads, S_total, D]
+    keys_expanded = keys.repeat_interleave(group_size, dim=0)
+
+    attn = torch.bmm(q_all_heads, keys_expanded.transpose(1, 2)) * scale
+    attn_w = torch.softmax(attn, dim=-1)                 # [num_q_heads, Q, S]
+    importance_q = attn_w.mean(dim=1)                    # [num_q_heads, S]
+    # Mean across group → per-KV-head importance
+    importance_kv = importance_q.view(
+        num_kv_heads, group_size, S_total
+    ).mean(dim=1)                                        # [num_kv_heads, S]
+    return importance_kv
+
+
+# Backward-compat wrappers (phase2_refresh imports these)
+def _project_queries(hidden_states, q_proj, num_kv_heads, head_dim):
+    """Project and collapse to num_kv_heads via group mean of Q vectors.
+
+    Used only by phase2_refresh, which computes a coarser single-pass score.
+    """
+    q = _project_queries_all_heads(hidden_states, q_proj, head_dim)
+    num_q_heads = q.shape[0]
+    if num_q_heads == num_kv_heads:
+        return q
+    group_size = num_q_heads // num_kv_heads
+    num_queries = q.shape[1]
+    return q.view(num_kv_heads, group_size, num_queries, head_dim).mean(dim=1)
+
+
+def _compute_importance_scores(queries, keys, head_dim):
+    """Legacy per-head scorer used by phase2."""
+    scale = 1.0 / math.sqrt(head_dim)
     attn_scores = torch.bmm(queries, keys.transpose(1, 2)) * scale
-    # Softmax over key dimension, then mean over queries
-    attn_weights = torch.softmax(attn_scores, dim=-1)  # [H, Q, S]
-    importance = attn_weights.mean(dim=1)  # [H, S]
-    return importance
+    attn_weights = torch.softmax(attn_scores, dim=-1)
+    return attn_weights.mean(dim=1)

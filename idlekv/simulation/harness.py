@@ -160,25 +160,24 @@ def simulate_agentic_workload(
                 )
                 total_idle_time += idle_duration
 
-                # Run IdleKV refinement if available
+                # Run IdleKV refinement if available.
+                # Query buffer is populated by real hidden states in run_simulation
+                # via manager.on_token_generated; this harness path assumes the
+                # caller has already done so (or will populate it before calling).
                 if manager is not None:
-                    # Simulate token generation for query buffer
-                    # (In real scenario, this would come from normal generation)
-                    dummy_hidden = torch.randn(
-                        1, manager.hidden_dim, device=device, dtype=manager.dtype
-                    )
-                    manager.query_buffer.append(dummy_hidden.squeeze(0))
-
-                    # Run refinement
+                    if manager.query_buffer.count == 0:
+                        raise RuntimeError(
+                            "Query buffer is empty at idle_refine time — "
+                            "hidden states must be captured during generation "
+                            "via manager.on_token_generated(hidden_state, kv) "
+                            "before calling idle_refine."
+                        )
                     refinement = manager.idle_refine(
                         past_key_values,
                         max_time_ms=idle_duration
                     )
                     past_key_values = refinement.past_key_values
                     refinement_results.append(refinement)
-
-                # Simulate idle time (for timing purposes)
-                time.sleep(idle_duration / 1000.0 * 0.1)  # Scale down for testing
 
     total_time = (time.perf_counter() - start_time) * 1000.0  # Convert to ms
 
@@ -245,18 +244,25 @@ def run_simulation(
         # Generate one token
         gen_start = time.perf_counter()
 
+        # Explicit position_ids: after compression, the physical cache length
+        # differs from the semantic sequence length. We must feed the true
+        # absolute position so that RoPE on the new query is consistent with
+        # the RoPE already baked into the retained keys.
         if next_token_id is None:
-            # First token: use prefill output
-            with torch.no_grad():
-                outputs = model(input_ids, past_key_values=past_kv, use_cache=True)
-            logits = outputs.logits[:, -1, :]
-            past_kv = outputs.past_key_values
+            # First post-prefill step: reuse the logits prefill already computed
+            # for the last prefilled position, rather than re-running forward
+            # with the entire input_ids (which would double-process the prompt).
+            logits = manager.last_prefill_logits
+            outputs = None  # no new forward; no hidden states to capture
         else:
+            pos = manager.next_position_ids(num_new_tokens=1)
             with torch.no_grad():
                 outputs = model(
                     next_token_id.unsqueeze(0),
                     past_key_values=past_kv,
                     use_cache=True,
+                    output_hidden_states=True,
+                    position_ids=pos,
                 )
             logits = outputs.logits[:, -1, :]
             past_kv = outputs.past_key_values
@@ -271,17 +277,24 @@ def run_simulation(
         # Track hidden state for query buffer
         # (In practice, hook into model's last layer output)
         # For now, use the last hidden state from the model
-        if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
+        if outputs is not None and getattr(outputs, 'hidden_states', None) is not None:
             last_h = outputs.hidden_states[-1][:, -1, :]
         else:
-            # Fallback: we need hidden states. Enable them.
-            last_h = None  # Will need model output_hidden_states=True
+            # First-iter path reuses prefill logits without a new forward, so
+            # no hidden state to capture here; prefill already populated the
+            # KV cache, and the next iter will capture the next token's state.
+            last_h = None
 
         if last_h is not None:
-            manager.on_token_generated(last_h, [
-                (past_kv[l][0][:, :, -1:, :], past_kv[l][1][:, :, -1:, :])
+            new_kv = [
+                (get_layer_kv(past_kv, l)[0][:, :, -1:, :],
+                 get_layer_kv(past_kv, l)[1][:, :, -1:, :])
                 for l in range(manager.num_layers)
-            ])
+            ]
+            manager.on_token_generated(last_h, new_kv)
+            # Online eviction keeps the cache bounded at budget_per_layer and
+            # feeds the shadow buffer with recently-evicted middle tokens.
+            past_kv = manager.maybe_evict_online(past_kv)
 
         # Check for EOS
         if next_token_id.item() == tokenizer.eos_token_id:
@@ -290,10 +303,10 @@ def run_simulation(
         # Tool-call pause every N tokens
         if tokens_generated % config.tool_call_interval == 0:
             duration_ms = sample_tool_duration(
-                rng,
                 median_ms=config.duration_median_ms,
                 min_ms=config.duration_min_ms,
                 max_ms=config.duration_max_ms,
+                rng=rng,
             )
 
             tool_call_info = {

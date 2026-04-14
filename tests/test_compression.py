@@ -20,12 +20,13 @@ def create_mock_model():
     param2 = torch.tensor([2.0], device="cpu", dtype=torch.float32)
     model.parameters.return_value = iter([param1, param2])
 
-    # Mock model layers for compression
+    # Real nn.Linear q_projs so _compress can actually project hidden states.
+    # num_q_heads * head_dim = 8 * 32 = 256 = hidden_size.
     layers = []
     for i in range(4):
         layer = Mock()
         layer.self_attn = Mock()
-        layer.self_attn.q_proj = Mock()
+        layer.self_attn.q_proj = torch.nn.Linear(256, 256, bias=False)
         layers.append(layer)
 
     model.model = Mock()
@@ -46,6 +47,7 @@ def create_mock_outputs(seq_len=10, num_layers=4, num_heads=8, head_dim=32):
     outputs = Mock()
     outputs.past_key_values = tuple(past_kv)
     outputs.hidden_states = [torch.randn(1, seq_len, 256) for _ in range(num_layers + 1)]
+    outputs.logits = torch.randn(1, seq_len, 1000)
 
     return outputs
 
@@ -193,6 +195,63 @@ def test_shadow_buffer_population():
 
     # The shadow buffer should have some content after aggressive compression
     # (We can't easily check the exact content without more complex mocking)
+
+
+def test_semantic_seq_len_tracking():
+    """Semantic seq len advances by 1 per generated token, independent of
+    physical cache length (which may shrink via online eviction)."""
+    model = create_mock_model()
+    manager = CompressedKVManager(model=model, compression_ratio=0.5)
+    seq_len = 20
+    input_ids = torch.randint(0, 1000, (1, seq_len))
+    mock_outputs = create_mock_outputs(seq_len=seq_len)
+    model.return_value = mock_outputs
+    manager.prefill(input_ids)
+
+    assert manager.semantic_seq_len == seq_len
+    pos0 = manager.next_position_ids(num_new_tokens=1)
+    assert pos0.item() == seq_len
+
+    # Simulate 3 generated tokens
+    for _ in range(3):
+        h = torch.randn(1, manager.hidden_dim)
+        kv = [(torch.randn(1, manager.num_kv_heads, 1, manager.head_dim),
+               torch.randn(1, manager.num_kv_heads, 1, manager.head_dim))
+              for _ in range(manager.num_layers)]
+        manager.on_token_generated(h, kv)
+
+    assert manager.semantic_seq_len == seq_len + 3
+    assert manager.next_position_ids(1).item() == seq_len + 3
+
+
+def test_online_eviction_bounds_cache():
+    """maybe_evict_online keeps physical cache at budget_per_layer and pushes
+    evicted pairs into the shadow buffer."""
+    model = create_mock_model()
+    manager = CompressedKVManager(model=model, compression_ratio=0.5,
+                                  shadow_size=128)
+    seq_len = 20
+    input_ids = torch.randint(0, 1000, (1, seq_len))
+    mock_outputs = create_mock_outputs(seq_len=seq_len)
+    model.return_value = mock_outputs
+    past_kv = manager.prefill(input_ids)
+    budget = manager.budget_per_layer
+
+    # Append 8 fake tokens to simulate growth past budget
+    from idlekv.utils.kv_cache import get_layer_kv, set_layer_kv
+    for _ in range(8):
+        for l in range(manager.num_layers):
+            k, v = get_layer_kv(past_kv, l)
+            new_k = torch.cat([k, torch.randn(1, manager.num_kv_heads, 1,
+                                              manager.head_dim)], dim=2)
+            new_v = torch.cat([v, torch.randn(1, manager.num_kv_heads, 1,
+                                              manager.head_dim)], dim=2)
+            past_kv = set_layer_kv(past_kv, l, new_k, new_v)
+
+    past_kv = manager.maybe_evict_online(past_kv)
+    for l in range(manager.num_layers):
+        k, _ = get_layer_kv(past_kv, l)
+        assert k.shape[2] == budget, f"layer {l}: {k.shape[2]} != budget {budget}"
 
 
 if __name__ == "__main__":

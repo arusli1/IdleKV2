@@ -77,6 +77,7 @@ class IdleScheduler:
         past_key_values: tuple,
         generated_kv: Optional[list] = None,
         max_time_ms: Optional[float] = None,
+        num_generated: int = 0,
     ) -> RefinementResult:
         """
         Run idle-time refinement. Blocks until interrupted or max_time reached.
@@ -111,6 +112,7 @@ class IdleScheduler:
             budget_per_layer=self.budget_per_layer,
             num_layers_arg=self.num_layers,
             interrupt_flag=check,
+            num_generated=num_generated,
         )
         p1_time = (time.perf_counter() - p1_start) * 1000
         p1_ran = True
@@ -122,7 +124,7 @@ class IdleScheduler:
 
         if not check() and len(self.full_kv_store) > 0:
             p2_ran = True
-            kv = phase2_refresh(
+            kv, p2_layers = phase2_refresh(
                 past_key_values=kv,
                 full_kv_store=self.full_kv_store,
                 generated_kv=generated_kv or [],
@@ -131,9 +133,6 @@ class IdleScheduler:
                 budget_per_layer=self.budget_per_layer,
                 interrupt_flag=check,
             )
-            # Count how many layers were actually refreshed
-            # (Phase 2 processes layers until interrupted)
-            # We track this inside phase2_refresh via interrupt checks
 
         p2_time = (time.perf_counter() - p2_start) * 1000
         total_time = (time.perf_counter() - start) * 1000
