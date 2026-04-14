@@ -1,0 +1,53 @@
+# Minimal mechanism ablation for the SCALE paper
+# Purpose: show that the shadow buffer matters for the shortlisted Phase 1 path
+# without opening a large ablation grid.
+
+hardware: a10g_24gb
+
+models:
+  - name: Qwen/Qwen2.5-7B-Instruct
+    short: qwen7b
+
+compression:
+  ratios: [0.7]
+  primary_ratio: 0.7
+  shadow_buffer_size: 256
+  query_buffer_size: 32
+  offload_full_kv: true
+
+simulation:
+  tool_call_interval: 100
+  duration_median_ms: 1000
+  duration_min_ms: 100
+  duration_max_ms: 10000
+
+evaluation:
+  seeds: [42, 123, 456]
+  benchmarks:
+    - ruler
+  benchmarks_by_type:
+    baseline: [ruler]
+    idlekv: [ruler]
+    ablation_buffer: [ruler]
+  ruler:
+    context_lengths: [4096]
+  longbench:
+    max_input_length: 4096
+  throughput:
+    num_warmup_tokens: 32
+    num_measure_tokens: 128
+
+baselines:
+  - name: snapkv_0.7
+    ratio: 0.7
+    method: snapkv
+
+idlekv:
+  conditions:
+    - idle_budget_ms: 100
+      phases: 1
+
+ablations:
+  shadow_buffer_sizes: [0, 256]
+
+output_dir: results/scale_mechanism_ablation/

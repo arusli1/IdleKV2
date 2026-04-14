@@ -59,8 +59,38 @@ final settings:
 # Reduced two-model scout that already completed on this machine
 python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
 
-# Most valuable next scout: verify the Qwen signal across seeds
+# Qwen seed follow-up scout
 python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
+```
+
+Current critical read after those scouts:
+- `Phase 1 @ 100ms` is the best-supported operating point
+- `Phase 2` is not part of the core story until it is debugged and rescued
+- `llama8b` on `RULER 4K` is ceiling, so one harder Llama probe is more useful
+  than more 4K ceiling runs
+- for the live next-step plan, read `STATUS.md`
+
+Focused next steps:
+```bash
+# Decode operating-point check
+python scripts/throughput_spotcheck.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --context-length 4096 \
+  --num-trials 3 \
+  --num-measure-tokens 128
+
+# Tiny harder Llama support probe
+python scripts/run_experiments.py \
+  --config configs/llama_hardness_probe.yaml \
+  --num-samples 10
+
+# SCALE workshop-core matrix
+python scripts/run_experiments.py --config configs/scale_core.yaml
+
+# Minimal shadow-buffer mechanism ablation
+python scripts/run_experiments.py \
+  --config configs/scale_mechanism_ablation.yaml \
+  --only-ablations
 ```
 
 ### Step 3: Broader Experiment Suite
@@ -136,11 +166,15 @@ IdleKV/
 │   ├── main.yaml              # Main experiment configuration
 │   ├── preliminary_idlekv.yaml # Reduced scout used to choose main settings
 │   ├── qwen_seed_followup.yaml # Qwen-only seed robustness scout
+│   ├── scale_core.yaml        # SCALE workshop-core matrix
+│   ├── scale_mechanism_ablation.yaml # Minimal workshop mechanism ablation
+│   ├── llama_hardness_probe.yaml # Tiny harder Llama support probe
 │   ├── a100_scaleup.yaml      # Larger-memory expansion config
 │   └── models.yaml            # Model specifications
 ├── scripts/
 │   ├── go_no_go.py            # Day 3 decision gate
 │   ├── run_experiments.py     # Full experiment runner
+│   ├── throughput_spotcheck.py # Decode operating-point confirmation
 │   └── plot_figures.py        # Result visualization
 └── tests/                     # Test suite (CPU compatible)
 ```

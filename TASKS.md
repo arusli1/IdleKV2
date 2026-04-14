@@ -31,18 +31,33 @@ Critical scope rule:
 | **Go/No-Go decision**        | `scripts/go_no_go.py` | ~10 min | Delayed-query stress gate at default `r=0.7` prints GO/MARGINAL/NO-GO |
 | **Performance verification** | —                     | ~10 min | Phase 1: target <100ms, Phase 2: verify locally on A10G |
 
-## 🔬 Current Scout Priority (~1-2 hours)
+## 🔬 Current Confirmation Priority (~1-2 hours)
 
-- Run `configs/qwen_seed_followup.yaml` next.
-- Purpose:
-  - verify the `0ms -> 100ms` gain on the informative model across seeds
-  - determine whether the `1000ms 1+2` drop is a real Phase 2 issue or a seed-specific fluke
-  - compare `1000ms phase=1` against `1000ms phase=1+2`
-- Why this exact scout:
-  - `100ms phase=1+2` is redundant because the scheduler only allows Phase 2
-    when `max_time_ms > 100`
-  - the explicit scout conditions avoid wasting runs on that duplicate case
-- Treat this as the last critical scout before locking the larger matrix.
+- The Qwen follow-up scout is finished.
+- Key result:
+  - `0ms, phase=1`: `0.877`
+  - `100ms, phase=1`: `0.903`
+  - `1000ms, phase=1`: `0.903`
+  - `1000ms, phase=1+2`: `0.653`
+- Read:
+  - the `0ms -> 100ms` Phase 1 gain is robust across seeds
+  - there is no evidence that `>100ms` helps Phase 1 on this slice
+  - Phase 2 is currently a liability, not part of the workshop-core story
+
+Next tiny runs:
+- Throughput / wall-clock spot-check
+  - use `scripts/throughput_spotcheck.py`
+  - compare compressed no-idle `r=0.7` vs IdleKV `r=0.7, 100ms, phase=1`
+  - goal: verify that the shortlisted workshop method keeps the same practical
+    decode operating point
+- Llama hardness probe
+  - use `configs/llama_hardness_probe.yaml` with `--num-samples 10`
+  - goal: decide whether Llama belongs in the `SCALE` matrix or only in the
+    later A100 expansion
+
+If those confirm the current read:
+- main workshop matrix: `configs/scale_core.yaml`
+- minimal mechanism ablation: `configs/scale_mechanism_ablation.yaml`
 
 ## 🏃‍♂️ Main Experiments (~12-30 hours total - multi-day runs)
 
@@ -59,8 +74,9 @@ Interpretation:
 - this A10G matrix is useful for scouting and constrained-hardware evidence
 - it is not automatically the final `SCALE` paper matrix, and it is not the
   final `NeurIPS` matrix
-- after the Qwen scout locks the informative setting, prefer a sharper
-  workshop-grade run over brute-forcing every remaining condition
+- after the Qwen scout, the default assumption should be a sharper
+  Phase-1-centered `SCALE` matrix rather than brute-forcing every remaining
+  condition
 
 | Task                       | Files                          | Runtime      | Exit Criteria                                               |
 | -------------------------- | ------------------------------ | ------------ | ----------------------------------------------------------- |
@@ -155,4 +171,7 @@ Interpretation:
 - A10G memory management / CPU full-KV offload
 - GQA head mapping for Llama/Qwen
 
-**Ready for one more critical scout and then a sharper larger run.** Keep the current focus on small setting-selection scouts first; once the informative Qwen slice is locked, choose the smallest matrix that is strong enough for `SCALE 2026`, then save the broader `NeurIPS 2026` evidence package for the larger-GPU phase.
+**Ready for the final tiny confirmation runs and then a sharper larger run.**
+The informative Qwen slice is now locked enough to demote Phase 2 from the core
+story. Choose the smallest matrix that is strong enough for `SCALE 2026`, then
+save the broader `NeurIPS 2026` evidence package for the larger-GPU phase.

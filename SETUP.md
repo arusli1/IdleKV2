@@ -194,10 +194,38 @@ python scripts/run_experiments.py \
     --config configs/preliminary_idlekv.yaml \
     --only-idlekv
 
-# Most valuable follow-up scout: Qwen seeds 123 and 456
+# Qwen follow-up scout: seeds 123 and 456
 python scripts/run_experiments.py \
     --config configs/qwen_seed_followup.yaml \
     --only-idlekv
+```
+
+Current read after those scouts:
+- `Phase 1 @ 100ms` is the best-supported operating point
+- `1000ms phase=1+2` is not part of the workshop-core story on current
+  evidence
+- before scaling up, prefer one throughput / wall-clock spot-check and one
+  harder Llama probe over a large additional exploratory sweep
+- read `STATUS.md` for the live next-step plan on this machine
+
+Focused next commands:
+```bash
+python scripts/throughput_spotcheck.py \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --context-length 4096 \
+    --num-trials 3 \
+    --num-measure-tokens 128
+
+python scripts/run_experiments.py \
+    --config configs/llama_hardness_probe.yaml \
+    --num-samples 10
+
+python scripts/run_experiments.py \
+    --config configs/scale_core.yaml
+
+python scripts/run_experiments.py \
+    --config configs/scale_mechanism_ablation.yaml \
+    --only-ablations
 ```
 
 Then run the broader matrix:

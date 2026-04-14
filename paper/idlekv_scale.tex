@@ -48,15 +48,18 @@ compute are scarce.
 Existing quality-recovery methods such as RefreshKV \citep{refreshkv2025}
 recover up to 52\% of the quality gap but impose periodic latency on every
 decode step, degrading throughput by ${\sim}25\%$.
-We propose \textbf{IdleKV}, a two-phase idle-time refinement system that
-performs TIR-informed token re-scoring ($<$100\,ms) and progressive
-full-attention layer refresh (100\,ms--2\,s) during tool-call pauses,
-wrapping any attention-based compression method.
-In calibrated projections for RULER and LongBench with Llama-3.1-8B at
-$2\times$ compression (SnapKV $r{=}0.5$), IdleKV recovers 30--50\% of the
-quality gap relative to less aggressive compression ($r{=}0.3$) while
-maintaining $r{=}0.5$ decode throughput---a projected point on the
-quality-throughput frontier that no static compression ratio achieves.
+We propose \textbf{IdleKV}, an idle-time cache-repair framework for
+tool-calling LLMs.
+Its core short-idle operator performs TIR-informed token re-scoring over a
+bounded shadow buffer in under 100\,ms, after compression has already happened
+and after the effective query has had a chance to shift.
+On a delayed-query stress gate at $r{=}0.7$, the compressed baseline improves
+from 91.7\% to 100.0\% with a mean 27.4\,ms Phase~1 pass.
+On the informative Qwen2.5-7B RULER-4K slice, 100\,ms Phase~1 improves average
+accuracy from 0.877 to 0.903 across follow-up seeds.
+Longer-budget full-attention refresh remains exploratory; the current measured
+scope supports the narrower claim that short-idle repair can turn otherwise
+wasted tool-call time into usable inference-quality budget.
 \end{abstract}
 
 % ---------------------------------------------------------------
@@ -115,42 +118,39 @@ costly.
 tool-call pauses, when the GPU is otherwise idle.
 Compression happens during generation, where speed is paramount.
 Refinement happens during tool calls, where the GPU would otherwise do nothing.
-Phase~1 performs TIR-informed re-scoring of recently evicted tokens against
-recent queries ($<$100\,ms), promoting tokens whose importance has grown since
-eviction.
-Phase~2 performs progressive full-attention layer refresh using a CPU-stored
-uncompressed cache, processing layers shallow-first to maximize downstream
-benefit per millisecond of idle budget.
-Neither phase adds overhead to the generation critical path.
+The current measured core is Phase~1: TIR-informed re-scoring of recently
+evicted tokens against recent queries in under 100\,ms, promoting tokens whose
+importance has grown since eviction.
+We also implement a longer-budget Phase~2 extension based on progressive
+full-attention refresh using a stored uncompressed cache, but the present
+evidence only supports Phase~1 as the durable main claim.
+Neither phase adds work to the token-by-token generation critical path.
 
 \textbf{Contributions:}
 \begin{itemize}
-\item \textbf{IdleKV, a two-phase idle-time refinement system.}
-  In our current calibrated analysis, IdleKV recovers 30--50\% of the quality
-  gap between SnapKV $r{=}0.5$ and $r{=}0.3$ on RULER and LongBench, wrapping
-  any attention-based compression method with ${<}2\%$ measured decode
-  throughput overhead.
-\item \textbf{Quality-vs-idle-budget curve.}
-  IdleKV motivates a first characterization of recoverable cache quality as a
-  function of available free compute, across compression ratios
-  $r \in \{0.3,\,0.5,\,0.7\}$ and two model families, giving practitioners a
-  concrete tool for capacity planning in agentic deployments once the
-  benchmark sweep is finalized.
-\item \textbf{Extended quality-throughput Pareto frontier.}
-  In the calibrated frontier analysis, IdleKV at $r{=}0.5$ occupies a
-  frontier position---$r{=}0.3$ quality at $r{=}0.5$ throughput---that no
-  static compression ratio and no synchronous recovery method achieves
-  simultaneously.
+\item \textbf{Idle-time, delayed-query cache repair.}
+  We formulate a setting where KV compression decisions are made before the
+  final effective query is known, and where tool-call pauses provide real idle
+  compute that can be used to repair those earlier decisions.
+\item \textbf{A cheap shadow-buffer repair operator.}
+  IdleKV Phase~1 re-scores recently evicted tokens against recent query states
+  in under 100\,ms and moves quality recovery off the generation critical path.
+\item \textbf{Measured evidence for the short-idle claim.}
+  In the current measured scope, the delayed-query gate and the informative
+  multi-seed Qwen RULER-4K slice both support the same conclusion:
+  short-idle Phase~1 improves over the matching aggressive-compression
+  baseline, while longer-budget Phase~2 remains exploratory.
 \end{itemize}
 
 A natural question is whether less aggressive compression achieves the same
 quality without the complexity of idle-time refinement.
-IdleKV directly addresses this: SnapKV $r{=}0.3$ is an explicit Pareto
-baseline, and Section~\ref{sec:results} predicts that IdleKV at $r{=}0.5$
-approaches $r{=}0.3$ quality while maintaining $r{=}0.5$ decode throughput.
-Synchronous refresh (RefreshKV-style) is likewise predicted to achieve
-comparable quality but at ${\sim}0.75{\times}$ throughput, leaving IdleKV in
-the stronger projected Pareto position.
+IdleKV directly addresses this by asking a different question:
+once aggressive compression has already happened, can a short idle window
+recover some of the lost quality without adding per-token decode work?
+The current paper answers that narrower question first.
+Broader Pareto claims against less aggressive compression and synchronous
+refresh remain part of the larger scale-up study rather than the core measured
+claim in this version.
 
 % ---------------------------------------------------------------
 %  2. Method
@@ -402,10 +402,10 @@ It further predicts that Phase~1 alone recovers 1.5--3.0\% of that gap within
 100\,ms at no throughput cost.
 In the current measured scope, this short-idle Phase~1 behavior is the core
 supported claim.
-Longer-budget P1$+$P2 remains exploratory: the current reduced A10G scout has
-only validated the robustness of Phase~1, and the stability of longer-budget
-P1$+$P2 remains an explicit open question for the next scout and the later
-scale-up matrix. Sync refresh is predicted to reach comparable quality but at
+Longer-budget P1$+$P2 remains exploratory: the current reduced A10G scouts
+validate the robustness of Phase~1, while the current Qwen follow-up indicates
+that long-budget P1$+$P2 is not yet stable enough to support the main claim.
+Sync refresh is predicted to reach comparable quality but at
 ${\sim}0.75{\times}$ throughput, consistent with the hypothesis that idle-time
 scheduling---not just the underlying quality operations---is the decisive
 advantage once the scale-up baseline is fully measured.
@@ -448,8 +448,9 @@ The calibration predicts rapid gains in the first 100\,ms (Phase~1, token
 promotion).
 For the current measured scope, that first-100\,ms region is the key region.
 Continued gains through 100\,ms--1\,s (Phase~2, shallow layers) remain a
-scale-up hypothesis rather than a validated core claim, and returns beyond
-1\,s are likely diminishing even if Phase~2 later stabilizes.
+scale-up hypothesis rather than a validated core claim, and the current Qwen
+follow-up suggests that this longer-budget path may require debugging before it
+belongs in the main story at all.
 More aggressive compression ratios are predicted to show larger absolute
 gains: $r{=}0.7$ recovers up to 4.3--4.7\% at a 2\,s budget compared to
 3.3--3.7\% at $r{=}0.5$, which is consistent with IdleKV's value scaling with
@@ -534,7 +535,8 @@ Phase~2.
 Phase~2 is then predicted to add an additional 1--2\% for the 51\% of calls
 lasting 100\,ms--1\,s.
 In the current measured scope, only the Phase~1 part of this story should be
-treated as durable until the longer-budget scout stabilizes.
+treated as durable; the longer-budget Qwen follow-up currently points in the
+opposite direction for P1$+$P2.
 The resulting weighted gain across 74\% of tool calls is predicted to be
 2.5--3.5\% RULER accuracy---comfortably above measurement noise if validated
 empirically.
@@ -609,7 +611,7 @@ recover part of the quality lost to aggressive compression without changing the
 decode operating point.
 That already turns idle time from wasted latency into a usable
 inference-quality budget.
-Broader claims about Phase~2, full LongBench integration, and the complete
+Bigger claims about Phase~2, full LongBench integration, and the complete
 quality-throughput frontier remain scale-up work for the larger-GPU study.
 The general principle---using scheduled idle compute for inference quality
 improvement---extends beyond KV caches to other quality-speed tradeoffs in

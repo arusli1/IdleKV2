@@ -1,0 +1,128 @@
+{
+  "config_path": "configs/qwen_seed_followup.yaml",
+  "output_dir": "results/qwen_seed_followup",
+  "start_time": "2026-04-14T17:27:42.084434",
+  "results": [
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 123,
+        "ratio": 0.7,
+        "idle_budget_ms": 0,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget0_phases1_qwen7b_seed123.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 123,
+        "ratio": 0.7,
+        "idle_budget_ms": 100,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget100_phases1_qwen7b_seed123.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 123,
+        "ratio": 0.7,
+        "idle_budget_ms": 1000,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget1000_phases1_qwen7b_seed123.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 123,
+        "ratio": 0.7,
+        "idle_budget_ms": 1000,
+        "phases": "1+2"
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget1000_phases12_qwen7b_seed123.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 456,
+        "ratio": 0.7,
+        "idle_budget_ms": 0,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget0_phases1_qwen7b_seed456.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 456,
+        "ratio": 0.7,
+        "idle_budget_ms": 100,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget100_phases1_qwen7b_seed456.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 456,
+        "ratio": 0.7,
+        "idle_budget_ms": 1000,
+        "phases": 1
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget1000_phases1_qwen7b_seed456.json"
+    },
+    {
+      "experiment": {
+        "type": "idlekv",
+        "model": {
+          "name": "Qwen/Qwen2.5-7B-Instruct",
+          "short": "qwen7b"
+        },
+        "seed": 456,
+        "ratio": 0.7,
+        "idle_budget_ms": 1000,
+        "phases": "1+2"
+      },
+      "status": "completed",
+      "result_path": "results/qwen_seed_followup/idlekv/idlekv_r0.7_budget1000_phases12_qwen7b_seed456.json"
+    }
+  ],
+  "end_time": "2026-04-14T18:16:30.679470"
+}

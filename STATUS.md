@@ -10,6 +10,8 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
 - The repo is intentionally scoped to a stable single-A10G workshop-scale matrix.
 - A reduced preliminary IdleKV scout is now complete and is more informative
   than the original long baseline-first queue for choosing the next runs.
+- The Qwen seed follow-up scout is also complete and has materially narrowed
+  the workshop-core claim.
 
 ## Submission Target
 
@@ -87,24 +89,49 @@ Current critical read:
 Tracked snapshot:
 - `tracked_results/preliminary_idlekv/`
 
-Recommended next small scout:
-- `configs/qwen_seed_followup.yaml`
-- run Qwen on seeds `123` and `456`
-- exact conditions:
-  - `0ms, phase=1`
-  - `100ms, phase=1`
-  - `1000ms, phase=1`
-  - `1000ms, phase=1+2`
-- purpose:
-  - confirm the `0ms -> 100ms` gain
-  - determine whether the Qwen `1000ms 1+2` drop is a real Phase 2 issue or a single-seed fluke
-  - compare long-budget Phase 2 directly against long-budget Phase 1
+## Qwen Seed Follow-up Scout
 
-Important scheduler note:
-- `100ms` with `phases=1+2` is not informative in this codebase
-- Phase 2 only becomes eligible when `max_time_ms > 100`
-- that is why the follow-up scout uses explicit condition pairs instead of a
-  full budgets × phases cartesian product
+Finished follow-up:
+- config: `configs/qwen_seed_followup.yaml`
+- scope:
+  - `qwen7b`
+  - seeds `123`, `456`
+  - `RULER 4K`
+  - `r=0.7`
+  - conditions:
+    - `0ms, phase=1`
+    - `100ms, phase=1`
+    - `1000ms, phase=1`
+    - `1000ms, phase=1+2`
+
+Headline read:
+- mean across seeds:
+  - `0ms, phase=1`: `0.877`
+  - `100ms, phase=1`: `0.903`
+  - `1000ms, phase=1`: `0.903`
+  - `1000ms, phase=1+2`: `0.653`
+- hardest subtask mean across seeds:
+  - `0ms, phase=1`: `0.63`
+  - `100ms, phase=1`: `0.71`
+  - `1000ms, phase=1`: `0.71`
+  - `1000ms, phase=1+2`: `0.01`
+
+Interpretation:
+- the `0ms -> 100ms` Phase 1 gain is robust across both follow-up seeds
+- there is no evidence that giving Phase 1 more than `100ms` helps on this
+  slice
+- `1000ms phase=1+2` is not merely noisy; it fails badly on the informative
+  subtask in both seeds
+
+Decision read:
+- `Phase 1 @ 100ms` is now the best-supported workshop-core operating point
+- Phase 2 should be treated as a separate debugging / scale-up topic, not part
+  of the `SCALE 2026` core claim
+- `llama8b` on `RULER 4K` remains a ceiling slice and should not drive method
+  selection
+
+Tracked snapshot:
+- `tracked_results/qwen_seed_followup/`
 
 ## Stable Default Run Tonight
 
@@ -178,9 +205,10 @@ Do not automatically discard the A10G results:
 
 Likely enough for a strong `SCALE 2026` `7`-page submission:
 - delayed-query pilot at `r=0.7`
-- informative Qwen scout showing `0ms -> 100ms` gain
+- informative Qwen scouts showing a robust `0ms -> 100ms` gain
 - one sharper follow-up matrix that locks the main setting
-- honest positioning: Phase 1 is the durable claim, Phase 2 is exploratory
+- honest positioning: Phase 1 is the durable claim, Phase 2 is explicitly not
+  part of the core story yet
 
 Possible `3`-page late-breaker package if time is tight:
 - delayed-query pilot
@@ -222,6 +250,51 @@ Commands:
 ```bash
 python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
 python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
+python scripts/throughput_spotcheck.py --model Qwen/Qwen2.5-7B-Instruct --context-length 4096 --num-trials 3 --num-measure-tokens 128
+python scripts/run_experiments.py --config configs/llama_hardness_probe.yaml --num-samples 10
+python scripts/run_experiments.py --config configs/scale_core.yaml
+python scripts/run_experiments.py --config configs/scale_mechanism_ablation.yaml --only-ablations
+```
+
+## Next Critical Small Runs
+
+Do these before committing to a broader `SCALE` matrix:
+
+1. Throughput / wall-clock spot-check on the shortlisted method
+   - script: `scripts/throughput_spotcheck.py`
+   - compare compressed no-idle `r=0.7` against IdleKV `r=0.7, 100ms, phase=1`
+   - goal: confirm the workshop claim that quality improves without materially
+     changing the practical decode operating point
+2. One harder Llama probe
+   - config: `configs/llama_hardness_probe.yaml`
+   - run with `--num-samples 10`
+   - do not run more `Llama RULER 4K` ceiling checks
+   - use a tiny harder slice to decide whether Llama belongs in the workshop
+     matrix or should be deferred to the larger-GPU expansion
+
+If those confirm the current read, the workshop-core matrix is:
+- config: `configs/scale_core.yaml`
+- optional minimal mechanism check: `configs/scale_mechanism_ablation.yaml`
+
+Exact commands:
+
+```bash
+python scripts/throughput_spotcheck.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --context-length 4096 \
+  --num-trials 3 \
+  --num-measure-tokens 128
+
+python scripts/run_experiments.py \
+  --config configs/llama_hardness_probe.yaml \
+  --num-samples 10
+
+python scripts/run_experiments.py \
+  --config configs/scale_core.yaml
+
+python scripts/run_experiments.py \
+  --config configs/scale_mechanism_ablation.yaml \
+  --only-ablations
 ```
 
 Use `tmux` and consider `--skip-existing` if resuming after interruption.
