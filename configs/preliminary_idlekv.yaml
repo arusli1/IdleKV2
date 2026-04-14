@@ -1,0 +1,56 @@
+# IdleKV preliminary priority matrix
+# Purpose: fast scouting pass to verify the main mechanism on real benchmarks
+# before broader multi-seed / multi-benchmark sweeps.
+
+hardware: a10g_24gb
+
+models:
+  - name: meta-llama/Llama-3.1-8B-Instruct
+    short: llama8b
+  - name: Qwen/Qwen2.5-7B-Instruct
+    short: qwen7b
+
+compression:
+  ratios: [0.7]
+  primary_ratio: 0.7
+  shadow_buffer_size: 256
+  query_buffer_size: 32
+  offload_full_kv: true
+
+simulation:
+  tool_call_interval: 100
+  duration_median_ms: 1000
+  duration_min_ms: 100
+  duration_max_ms: 10000
+
+evaluation:
+  seeds: [42]
+  benchmarks:
+    - ruler
+  benchmarks_by_type:
+    baseline: [ruler]
+    idlekv: [ruler]
+    ablation_buffer: [ruler]
+  ruler:
+    context_lengths: [4096]
+  longbench:
+    max_input_length: 4096
+  throughput:
+    num_warmup_tokens: 32
+    num_measure_tokens: 128
+
+baselines:
+  - name: full_cache
+    ratio: null
+  - name: snapkv_0.7
+    ratio: 0.7
+    method: snapkv
+
+idlekv:
+  idle_budgets_ms: [0, 100, 1000]
+  phases: [1, "1+2"]
+
+ablations:
+  shadow_buffer_sizes: [0, 256]
+
+output_dir: results/preliminary_idlekv/

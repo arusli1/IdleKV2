@@ -10,6 +10,9 @@ build/
 results/
 *.json
 !configs/*.yaml
+!tracked_results/
+!tracked_results/**/*.json
+!tracked_results/**/*.md
 
 # Models and data (too large for git)
 models/

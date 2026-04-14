@@ -1,0 +1,107 @@
+{
+  "status": "completed",
+  "experiment": {
+    "type": "baseline",
+    "model": {
+      "name": "meta-llama/Llama-3.1-8B-Instruct",
+      "short": "llama8b"
+    },
+    "seed": 42,
+    "baseline": {
+      "name": "full_cache",
+      "ratio": null
+    }
+  },
+  "method": "full_cache",
+  "ratio": null,
+  "seed": 42,
+  "benchmark_results": {
+    "ruler": {
+      "4096": {
+        "niah_single_1": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "niah_single_2": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "niah_single_3": {
+          "accuracy": 1.0,
+          "samples": 50
+        },
+        "avg_accuracy": 1.0,
+        "num_subtasks": 3
+      }
+    },
+    "longbench": {
+      "narrativeqa": {
+        "score": 14.175860246184753,
+        "samples": 50
+      },
+      "qasper": {
+        "score": 12.13718807747475,
+        "samples": 50
+      },
+      "multifieldqa_en": {
+        "score": 27.498831012553246,
+        "samples": 50
+      },
+      "hotpotqa": {
+        "score": 14.372620530285086,
+        "samples": 50
+      },
+      "2wikimqa": {
+        "score": 16.055086932630342,
+        "samples": 50
+      },
+      "musique": {
+        "score": 8.280031773373246,
+        "samples": 50
+      },
+      "gov_report": {
+        "score": 19.514020398272393,
+        "samples": 50
+      },
+      "qmsum": {
+        "score": 8.50539021969906,
+        "samples": 50
+      },
+      "multi_news": {
+        "score": 14.407490939374378,
+        "samples": 50
+      },
+      "trec": {
+        "score": 68.0,
+        "samples": 50
+      },
+      "triviaqa": {
+        "score": 87.49941520467836,
+        "samples": 50
+      },
+      "samsum": {
+        "score": 38.129898740327604,
+        "samples": 50
+      },
+      "passage_count": {
+        "score": 4.223809523809524,
+        "samples": 50
+      },
+      "passage_retrieval_en": {
+        "score": 44.0,
+        "samples": 50
+      },
+      "lcc": {
+        "score": 55.0889333320926,
+        "samples": 50
+      },
+      "repobench-p": {
+        "score": 38.782502687771725,
+        "samples": 50
+      },
+      "avg_score": 29.416942476157942,
+      "num_subtasks": 16
+    }
+  },
+  "wall_time_sec": 5919.877645258999
+}
