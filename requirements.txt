@@ -1,0 +1,13 @@
+# Base runtime dependencies for IdleKV.
+# Optional extras such as `flash-attn` and `kvpress` are not included here.
+
+torch>=2.1
+transformers>=4.40
+accelerate
+datasets
+pyyaml
+tqdm
+pandas
+matplotlib
+seaborn
+latexmk

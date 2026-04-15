@@ -11,6 +11,8 @@
 \usepackage{url}
 \usepackage{xcolor}
 \usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning}
 
 \icmltitlerunning{IdleKV: Exploiting Agentic GPU Idle Time for KV Cache Recovery}
 
@@ -179,14 +181,79 @@ Figure~\ref{fig:architecture} illustrates the full pipeline.
 
 \begin{figure}[t]
 \centering
-\fbox{\parbox{0.88\columnwidth}{\centering\vspace{2.0cm}%
-\small[Figure~1: Architecture diagram ---
-Prefill $\to$ Compress $+$ Store Full KV $\to$
-Generate with Shadow Buffer $\to$ Tool Call $\to$
-Phase~1 $+$ Phase~2 $\to$ Resume]\vspace{2.0cm}}}
+\resizebox{0.98\columnwidth}{!}{%
+\begin{tikzpicture}[
+    >=Latex,
+    font=\scriptsize,
+    node distance=0.55cm and 0.35cm,
+    main/.style={
+      draw,
+      rounded corners=2pt,
+      minimum height=0.95cm,
+      text width=2.5cm,
+      align=center,
+      inner sep=3pt,
+      fill=blue!7
+    },
+    support/.style={
+      draw,
+      rounded corners=2pt,
+      minimum height=0.82cm,
+      text width=2.15cm,
+      align=center,
+      inner sep=3pt,
+      fill=gray!10
+    },
+    refine/.style={
+      draw,
+      rounded corners=2pt,
+      minimum height=0.95cm,
+      text width=2.45cm,
+      align=center,
+      inner sep=3pt,
+      fill=green!10
+    },
+    flow/.style={->, thick},
+    aux/.style={->, semithick, dashed},
+    label/.style={font=\scriptsize\bfseries, text=black!70}
+  ]
+  \node[main] (prefill) {Prefill prompt\\full forward pass};
+  \node[main, right=of prefill] (compress) {Compress KV\\keep retained cache};
+  \node[main, right=of compress] (decode) {Decode with\\compressed cache};
+  \node[main, right=of decode] (tool) {Tool call\\idle window opens};
+
+  \node[support, below=of compress] (fullkv) {CPU full-KV backup\\for prefill tokens};
+  \node[support, below left=0.75cm and -0.10cm of decode] (query) {Query buffer\\recent layer-local states};
+  \node[support, below right=0.75cm and -0.10cm of decode] (shadow) {Shadow buffer\\recently evicted KV};
+  \node[refine, below=of tool] (phase1) {Phase 1\\re-score retained $+$ shadow\\target $\leq 100$\,ms};
+  \node[refine, below=of phase1] (phase2) {Phase 2 (optional)\\progressive full-attention\\refresh from full KV};
+
+  \draw[flow] (prefill) -- (compress);
+  \draw[flow] (compress) -- (decode);
+  \draw[flow] (decode) -- node[above, align=center] {tool emitted /\\generation paused} (tool);
+
+  \draw[aux] (compress) -- (fullkv);
+  \draw[aux] (decode) -- (query);
+  \draw[aux] (decode) -- (shadow);
+
+  \draw[flow] (tool) -- (phase1);
+  \draw[aux] (query.east) -- ($(phase1.west)+(0.0,0.12)$);
+  \draw[aux] (shadow.east) -- ($(phase1.west)+(0.0,-0.12)$);
+  \draw[aux] (fullkv.east) -- ($(phase2.west)+(0.0,0.0)$);
+  \draw[aux] (query.east) |- ($(phase2.west)+(0.0,0.15)$);
+  \draw[flow] (phase1) -- node[right, align=center] {if time remains} (phase2);
+  \draw[flow] (phase1.west) .. controls ($(phase1.west)+(-1.1,0)$) and ($(decode.south)+(0,-1.4)$) .. node[below, align=center] {swap refined cache\\resume decode} (decode.south);
+  \draw[aux] (phase2.west) .. controls ($(phase2.west)+(-1.35,0)$) and ($(decode.south)+(0,-1.9)$) .. (decode.south);
+
+  \node[label, above=0.20cm of $(prefill)!0.50!(decode)$] {Latency-sensitive path};
+  \node[label, right=0.10cm of phase1.east, align=left] {Idle-time\\repair path};
+\end{tikzpicture}%
+}
 \caption{IdleKV pipeline.  Compression runs during generation
-(latency-sensitive path); refinement runs during tool calls (free compute).
-The CPU backup is updated after each tool-result prefill.}
+(latency-sensitive path), while repair runs only during tool-call pauses.
+Phase~1 uses recent query states and the shadow buffer to repair aggressive
+compression quickly; Phase~2 optionally performs a slower refresh from the
+CPU full-KV backup before the refined cache is swapped back into decode.}
 \label{fig:architecture}
 \end{figure}
 
@@ -458,7 +525,7 @@ X-axis: idle budget (ms, log scale).
 Y-axis: RULER 4K improvement over no-refinement baseline.]\vspace{1.6cm}}}
 \caption{Quality recovery as a function of idle compute budget.
 This figure is reserved for the measured workshop-core plot after
-`configs/scale_core.yaml` finishes. The current evidence already supports the
+\texttt{configs/scale\_core.yaml} finishes. The current evidence already supports the
 same qualitative message: the first 100\,ms matters, while the current
 long-budget P1$+$P2 path is not stable enough for the main story.}
 \label{fig:budget_curve}
@@ -470,7 +537,7 @@ Figure~\ref{fig:pareto} plots RULER 4K accuracy vs.\ decode throughput for all
 methods.
 That throughput figure is the next critical measurement rather than a completed
 result. The current repository contains a dedicated
-`scripts/throughput_spotcheck.py` script for this purpose.
+\texttt{scripts/throughput\_spotcheck.py} script for this purpose.
 The workshop-core claim only needs the narrower operating-point check:
 showing that short-idle Phase~1 improves on the matching compressed baseline
 without materially changing decode speed.
@@ -494,7 +561,7 @@ decode operating point.}
 Table~\ref{tab:ablation} isolates Phase~1 and Phase~2 contributions.
 The current workshop-core ablation is narrower: it asks whether the shadow
 buffer is necessary for the shortlisted Phase~1 path.
-That is the role of `configs/scale_mechanism_ablation.yaml`.
+That is the role of \texttt{configs/scale\_mechanism\_ablation.yaml}.
 We explicitly do not treat Phase~2 as part of the current ablation story,
 because the Qwen follow-up indicates that the existing long-budget path is not
 yet stable enough for a positive claim.
