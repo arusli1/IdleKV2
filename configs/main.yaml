@@ -77,8 +77,14 @@ baselines:
 # optimization or on larger-memory hardware.
 
 idlekv:
+  refinement_policy: sampled_spans
+  min_idle_ms: 20
+  shadow_only_max_ms: 80
+  sample_span_size: 16
+  sample_spans_per_layer: 2
+  sample_sampler_seed: 0
   idle_budgets_ms: [0, 50, 100, 500, 1000, 2000, 5000]
-  phases: [1, 2, "1+2"]
+  phases: [1]
 
 ablations:
   shadow_buffer_sizes: [0, 64, 128, 256, 512]

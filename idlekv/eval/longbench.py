@@ -395,6 +395,7 @@ def evaluate_longbench(
     press=None,
     idle_budget_ms: float = 0.0,
     phases="1+2",
+    policy: Optional[str] = None,
     sync_refresh_stride: Optional[int] = None,
     max_input_length: int = 4096,
     **kwargs
@@ -437,6 +438,7 @@ def evaluate_longbench(
                         press=press,
                         idle_budget_ms=idle_budget_ms,
                         phases=phases,
+                        policy=policy,
                         sync_refresh_stride=sync_refresh_stride,
                     )
                     prediction = generated["text"].strip()

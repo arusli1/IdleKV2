@@ -6,10 +6,16 @@ a single coherent interface.
 This is the main entry point for using IdleKV.
 """
 
+import math
 import torch
 from typing import Optional, Union
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
+import torch.nn.functional as F
 
+from idlekv.core.anytime_repair import (
+    compute_importance_scores_gqa,
+    project_queries_all_heads,
+)
 from idlekv.core.shadow_buffer import ShadowBuffer
 from idlekv.core.query_buffer import QueryBuffer
 from idlekv.core.phase2_refresh import FullKVStore
@@ -45,6 +51,12 @@ class CompressedKVManager:
         shadow_size: int = 256,
         query_buffer_size: int = 32,
         offload_full_kv: bool = True,
+        default_refinement_policy: Optional[str] = None,
+        anytime_min_idle_ms: float = 20.0,
+        anytime_shadow_only_max_ms: float = 80.0,
+        sample_span_size: int = 16,
+        sample_spans_per_layer: int = 2,
+        sample_sampler_seed: int = 0,
     ):
         self.model = model
         self.compression_ratio = compression_ratio
@@ -62,6 +74,7 @@ class CompressedKVManager:
         self.device = param.device
         self.dtype = param.dtype
         self.offload_full_kv = offload_full_kv
+        self.default_refinement_policy = default_refinement_policy
 
         # Initialize components
         self.shadow_buffer = ShadowBuffer(
@@ -85,6 +98,9 @@ class CompressedKVManager:
         # Fix Bug 3: Use list of lists to avoid O(n^2) torch.cat
         self.generated_kv_lists: list = []  # list of lists of (k, v) per layer
         self.prefill_query_seed: Optional[torch.Tensor] = None
+        self.retained_positions: list[torch.Tensor] = []
+        self.prefill_importance_scores: list[torch.Tensor] = []
+        self.prefill_seq_len: int = 0
 
         # Semantic sequence length = prefill_len + tokens generated since last
         # prefill. The compressed cache's physical length differs from this,
@@ -96,6 +112,11 @@ class CompressedKVManager:
         # Allow a small decode-time slack so we do not rebuild the physical KV
         # on every generated token once the cache is near its budget.
         self.online_eviction_slack: int = 16
+        self.anytime_min_idle_ms = anytime_min_idle_ms
+        self.anytime_shadow_only_max_ms = anytime_shadow_only_max_ms
+        self.sample_span_size = sample_span_size
+        self.sample_spans_per_layer = sample_spans_per_layer
+        self.sample_sampler_seed = sample_sampler_seed
 
     def _run_prefill_with_query_windows(self, input_ids: torch.Tensor):
         """
@@ -177,6 +198,9 @@ class CompressedKVManager:
         ], dim=1)
         # Initialize list of lists for generated KV (avoids O(n^2) concatenation)
         self.generated_kv_lists = [[] for _ in range(self.num_layers)]
+        self.retained_positions = []
+        self.prefill_importance_scores = []
+        self.prefill_seq_len = seq_len
 
         # Compute budget
         self.budget_per_layer = int(seq_len * (1 - self.compression_ratio))
@@ -219,8 +243,6 @@ class CompressedKVManager:
           5) Always keep the last W tokens (observation window) and sink
              tokens (first 4). Top-k from the remainder. Evicted → shadow.
         """
-        import math
-        import torch.nn.functional as F
         from idlekv.utils.kv_cache import build_cache
 
         compressed = []
@@ -239,10 +261,9 @@ class CompressedKVManager:
 
             if S <= budget:
                 compressed.append((k, v))
+                self.retained_positions.append(torch.arange(S, dtype=torch.long))
+                self.prefill_importance_scores.append(torch.ones(S, dtype=torch.float32))
                 continue
-
-            layer = self.model.model.layers[layer_idx]
-            q_proj = layer.self_attn.q_proj
 
             # --- (1) window hidden states feeding this layer -----------------
             if hidden_states_all is not None:
@@ -255,22 +276,22 @@ class CompressedKVManager:
                 compressed.append(
                     (k[:, :, keep, :], v[:, :, keep, :])
                 )
+                self.retained_positions.append(keep.detach().cpu())
+                self.prefill_importance_scores.append(torch.ones(S, dtype=torch.float32))
                 continue
 
             # --- (2) project to queries --------------------------------------
-            with torch.no_grad():
-                q = q_proj(window_h)              # [W, num_q_heads * D]
-            W = q.shape[0]
-            q = q.view(W, num_q_heads, self.head_dim).permute(1, 0, 2)  # [num_q, W, D]
+            q_proj = self.model.model.layers[layer_idx].self_attn.q_proj
+            q = project_queries_all_heads(window_h, q_proj, self.head_dim)
 
             # --- (3) per-Q-head attention, then group mean ------------------
-            scale = 1.0 / math.sqrt(self.head_dim)
-            k_expanded = k[0].repeat_interleave(group_size, dim=0)  # [num_q, S, D]
-            attn = torch.bmm(q, k_expanded.transpose(1, 2)) * scale  # [num_q, W, S]
-            attn_w = torch.softmax(attn, dim=-1)
-            # mean over the W queries, then across GQA group
-            score_q = attn_w.mean(dim=1)          # [num_q, S]
-            score_kv = score_q.view(self.num_kv_heads, group_size, S).mean(dim=1)  # [H_kv, S]
+            score_kv = compute_importance_scores_gqa(
+                q,
+                k[0],
+                self.head_dim,
+                num_q_heads,
+                self.num_kv_heads,
+            )
 
             # --- (4) 1D avg-pool smoothing ----------------------------------
             # Protects clusters of adjacent important tokens from fragmentation.
@@ -310,9 +331,16 @@ class CompressedKVManager:
             if evicted_indices.numel() > 0:
                 evicted_k = k[0, :, evicted_indices, :]  # [H, num_evicted, D]
                 evicted_v = v[0, :, evicted_indices, :]
-                self.shadow_buffer.push(layer_idx, evicted_k, evicted_v)
+                self.shadow_buffer.push(
+                    layer_idx,
+                    evicted_k,
+                    evicted_v,
+                    positions=evicted_indices,
+                )
 
             compressed.append((compressed_k, compressed_v))
+            self.retained_positions.append(keep_indices.detach().cpu())
+            self.prefill_importance_scores.append(token_importance.detach().cpu().float())
 
         # Hidden states no longer needed after compression
         self._prefill_hidden_states = None
@@ -381,18 +409,45 @@ class CompressedKVManager:
             S = k.shape[2]
             if S <= self.budget_per_layer + slack:
                 continue
+            retained_positions = self.retained_positions[layer_idx]
+            current_prefill_len = int(retained_positions.numel())
+            if current_prefill_len <= sink_size:
+                continue
+
             overflow = S - self.budget_per_layer
-            # Evict positions [sink_size : sink_size + overflow]
+            evict_count = min(overflow, current_prefill_len - sink_size)
+            if evict_count <= 0:
+                continue
+
             evict_start = sink_size
-            evict_end = sink_size + overflow
-            # Push evicted to shadow
-            evicted_k = k[0, :, evict_start:evict_end, :]  # [H, overflow, D]
+            evict_end = sink_size + evict_count
+            evicted_k = k[0, :, evict_start:evict_end, :]
             evicted_v = v[0, :, evict_start:evict_end, :]
-            self.shadow_buffer.push(layer_idx, evicted_k, evicted_v)
-            # Keep sinks + tail
-            keep_k = torch.cat([k[:, :, :sink_size, :], k[:, :, evict_end:, :]], dim=2)
-            keep_v = torch.cat([v[:, :, :sink_size, :], v[:, :, evict_end:, :]], dim=2)
+            evicted_positions = retained_positions[evict_start:evict_end]
+            self.shadow_buffer.push(
+                layer_idx,
+                evicted_k,
+                evicted_v,
+                positions=evicted_positions,
+            )
+
+            keep_prefill_k = torch.cat(
+                [k[:, :, :sink_size, :], k[:, :, evict_end:current_prefill_len, :]],
+                dim=2,
+            )
+            keep_prefill_v = torch.cat(
+                [v[:, :, :sink_size, :], v[:, :, evict_end:current_prefill_len, :]],
+                dim=2,
+            )
+            generated_k = k[:, :, current_prefill_len:, :]
+            generated_v = v[:, :, current_prefill_len:, :]
+            keep_k = torch.cat([keep_prefill_k, generated_k], dim=2)
+            keep_v = torch.cat([keep_prefill_v, generated_v], dim=2)
             past_key_values = set_layer_kv(past_key_values, layer_idx, keep_k, keep_v)
+            self.retained_positions[layer_idx] = torch.cat([
+                retained_positions[:sink_size],
+                retained_positions[evict_end:],
+            ], dim=0)
         return past_key_values
 
     def next_position_ids(self, num_new_tokens: int = 1) -> torch.Tensor:
@@ -454,6 +509,7 @@ class CompressedKVManager:
         past_key_values,
         max_time_ms: float = 1000,
         phases: Union[str, int, None] = "1+2",
+        policy: Optional[str] = None,
     ) -> RefinementResult:
         """
         Run idle-time refinement (call during tool-call pauses).
@@ -472,18 +528,29 @@ class CompressedKVManager:
             model=self.model,
             budget_per_layer=self.budget_per_layer,
             num_layers=self.num_layers,
+            retained_positions=self.retained_positions,
+            prefill_importance_scores=self.prefill_importance_scores,
+            anytime_min_idle_ms=self.anytime_min_idle_ms,
+            anytime_shadow_only_max_ms=self.anytime_shadow_only_max_ms,
+            sample_span_size=self.sample_span_size,
+            sample_spans_per_layer=self.sample_spans_per_layer,
+            sample_sampler_seed=self.sample_sampler_seed,
         )
         # num_generated = number of tokens appended since last prefill.
         # Phase 1 uses this to preserve the generated tail instead of evicting
         # committed model outputs.
         num_gen = len(self.generated_kv_lists[0]) if self.generated_kv_lists else 0
-        return scheduler.run(
+        result = scheduler.run(
             past_key_values=past_key_values,
             generated_kv=self._get_generated_kv(),
             max_time_ms=max_time_ms,
             num_generated=num_gen,
             phases=phases,
+            policy=policy or self.default_refinement_policy,
         )
+        if result.retained_positions is not None:
+            self.retained_positions = [pos.detach().cpu() for pos in result.retained_positions]
+        return result
 
     def on_tool_result_prefill(self, full_kv, new_seq_len: int):
         """
@@ -496,5 +563,15 @@ class CompressedKVManager:
             new_seq_len: the new semantic sequence length (prefill + tool result).
         """
         self.full_kv_store.store(full_kv)
+        self.shadow_buffer.clear()
         self.generated_kv_lists = [[] for _ in range(self.num_layers)]
         self.semantic_seq_len = new_seq_len
+        self.prefill_seq_len = new_seq_len
+        self.retained_positions = [
+            torch.arange(new_seq_len, dtype=torch.long)
+            for _ in range(self.num_layers)
+        ]
+        self.prefill_importance_scores = [
+            torch.ones(new_seq_len, dtype=torch.float32)
+            for _ in range(self.num_layers)
+        ]

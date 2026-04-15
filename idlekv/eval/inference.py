@@ -24,6 +24,7 @@ def decode_with_manager(
     max_new_tokens: int = 64,
     sync_refresh_stride: Optional[int] = None,
     sync_refresh_phases: Union[str, int, None] = "2",
+    sync_refresh_policy: Optional[str] = None,
 ):
     """
     Greedy decode while preserving IdleKV semantic positions.
@@ -76,6 +77,7 @@ def decode_with_manager(
                     current_past_kv,
                     max_time_ms=None,
                     phases=sync_refresh_phases,
+                    policy=sync_refresh_policy,
                 )
                 current_past_kv = refinement.past_key_values
                 refinement_results.append(refinement)
@@ -96,6 +98,7 @@ def generate_text(
     press=None,
     idle_budget_ms: float = 0.0,
     phases: Union[str, int, None] = "1+2",
+    policy: Optional[str] = None,
     sync_refresh_stride: Optional[int] = None,
 ):
     """
@@ -138,6 +141,7 @@ def generate_text(
             past_key_values,
             max_time_ms=idle_budget_ms,
             phases=phases,
+            policy=policy,
         )
         past_key_values = refinement.past_key_values
         refinement_results.append(refinement)
@@ -150,6 +154,7 @@ def generate_text(
         initial_logits=manager.last_prefill_logits,
         max_new_tokens=max_new_tokens,
         sync_refresh_stride=sync_refresh_stride,
+        sync_refresh_policy=policy,
     )
     refinement_results.extend(decoded["refinement_results"])
     return {

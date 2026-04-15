@@ -110,6 +110,8 @@ def test_prefill_compression(monkeypatch):
     # Note: In our simplified test, we can't easily verify exact compression
     # but we can check that the process completed without errors
     assert compressed_kv is not None
+    assert len(manager.retained_positions) == manager.num_layers
+    assert len(manager.prefill_importance_scores) == manager.num_layers
 
     # Check that shadow buffer and query buffer were reset
     assert len(manager.generated_kv_lists) == manager.num_layers
@@ -258,8 +260,7 @@ def test_semantic_seq_len_tracking():
 
 
 def test_online_eviction_bounds_cache():
-    """maybe_evict_online keeps physical cache at budget_per_layer and pushes
-    evicted pairs into the shadow buffer."""
+    """maybe_evict_online evicts only prefill tokens and keeps generated tail pinned."""
     model = create_mock_model()
     manager = CompressedKVManager(model=model, compression_ratio=0.5,
                                   shadow_size=128)
@@ -284,7 +285,8 @@ def test_online_eviction_bounds_cache():
     past_kv = manager.maybe_evict_online(past_kv, slack_tokens=0)
     for l in range(manager.num_layers):
         k, _ = get_layer_kv(past_kv, l)
-        assert k.shape[2] == budget, f"layer {l}: {k.shape[2]} != budget {budget}"
+        assert k.shape[2] == 12, f"layer {l}: {k.shape[2]} != 12"
+        assert manager.retained_positions[l].numel() == 4
 
 
 def test_online_eviction_slack_delays_rebuild():
@@ -309,6 +311,30 @@ def test_online_eviction_slack_delays_rebuild():
     for l in range(manager.num_layers):
         k, _ = get_layer_kv(past_kv, l)
         assert k.shape[2] == budget + 1
+
+
+def test_online_eviction_tracks_shadow_positions():
+    model = create_mock_model()
+    manager = CompressedKVManager(model=model, compression_ratio=0.5, shadow_size=128)
+    seq_len = 20
+    input_ids = torch.randint(0, 1000, (1, seq_len))
+    mock_outputs = create_mock_outputs(seq_len=seq_len)
+    model.return_value = mock_outputs
+    past_kv = manager.prefill(input_ids)
+
+    from idlekv.utils.kv_cache import get_layer_kv, set_layer_kv
+    for l in range(manager.num_layers):
+        k, v = get_layer_kv(past_kv, l)
+        new_k = torch.cat([k, torch.randn(1, manager.num_kv_heads, 1, manager.head_dim)], dim=2)
+        new_v = torch.cat([v, torch.randn(1, manager.num_kv_heads, 1, manager.head_dim)], dim=2)
+        past_kv = set_layer_kv(past_kv, l, new_k, new_v)
+
+    before = manager.retained_positions[0].clone()
+    past_kv = manager.maybe_evict_online(past_kv, slack_tokens=0)
+    _, _, shadow_positions = manager.shadow_buffer.get(0)
+    assert shadow_positions.numel() > 0
+    assert before[4].item() in shadow_positions.tolist()
+    assert manager.retained_positions[0].numel() == before.numel() - 1
 
 
 if __name__ == "__main__":

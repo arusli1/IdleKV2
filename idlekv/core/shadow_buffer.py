@@ -19,6 +19,7 @@ class LayerBuffer:
     """Buffer for a single layer's evicted KV pairs."""
     keys: torch.Tensor      # [num_heads, current_size, head_dim]
     values: torch.Tensor    # [num_heads, current_size, head_dim]
+    positions: torch.Tensor # [current_size] original prefill positions
     write_idx: int          # next write position (wraps around)
     count: int              # number of valid entries (up to max_size)
     max_size: int
@@ -51,12 +52,19 @@ class ShadowBuffer:
             self.layers.append(LayerBuffer(
                 keys=torch.zeros(num_kv_heads, max_size, head_dim, device=device, dtype=dtype),
                 values=torch.zeros(num_kv_heads, max_size, head_dim, device=device, dtype=dtype),
+                positions=torch.full((max_size,), -1, device=device, dtype=torch.long),
                 write_idx=0,
                 count=0,
                 max_size=max_size,
             ))
 
-    def push(self, layer_idx: int, keys: torch.Tensor, values: torch.Tensor):
+    def push(
+        self,
+        layer_idx: int,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        positions: Optional[torch.Tensor] = None,
+    ):
         """
         Push evicted KV pairs into the buffer for a given layer.
 
@@ -64,6 +72,7 @@ class ShadowBuffer:
             layer_idx: which transformer layer
             keys: [num_kv_heads, num_evicted, head_dim]
             values: [num_kv_heads, num_evicted, head_dim]
+            positions: [num_evicted] original prefill positions
         """
         buf = self.layers[layer_idx]
         num_evicted = keys.shape[1]
@@ -71,10 +80,21 @@ class ShadowBuffer:
         if num_evicted == 0 or buf.max_size == 0:
             return
 
+        if positions is None:
+            positions = torch.full(
+                (num_evicted,),
+                -1,
+                device=buf.positions.device,
+                dtype=torch.long,
+            )
+        else:
+            positions = positions.to(device=buf.positions.device, dtype=torch.long)
+
         if num_evicted >= buf.max_size:
             # More evicted than buffer can hold — keep the most recent
             buf.keys.copy_(keys[:, -buf.max_size:, :])
             buf.values.copy_(values[:, -buf.max_size:, :])
+            buf.positions.copy_(positions[-buf.max_size:])
             buf.write_idx = 0
             buf.count = buf.max_size
             return
@@ -84,29 +104,50 @@ class ShadowBuffer:
         if num_evicted <= space_before_wrap:
             buf.keys[:, buf.write_idx:buf.write_idx + num_evicted, :] = keys
             buf.values[:, buf.write_idx:buf.write_idx + num_evicted, :] = values
+            buf.positions[buf.write_idx:buf.write_idx + num_evicted] = positions
         else:
             # Split write across wrap boundary
             buf.keys[:, buf.write_idx:, :] = keys[:, :space_before_wrap, :]
             buf.values[:, buf.write_idx:, :] = values[:, :space_before_wrap, :]
+            buf.positions[buf.write_idx:] = positions[:space_before_wrap]
             remainder = num_evicted - space_before_wrap
             buf.keys[:, :remainder, :] = keys[:, space_before_wrap:, :]
             buf.values[:, :remainder, :] = values[:, space_before_wrap:, :]
+            buf.positions[:remainder] = positions[space_before_wrap:]
 
         buf.write_idx = (buf.write_idx + num_evicted) % buf.max_size
         buf.count = min(buf.count + num_evicted, buf.max_size)
 
-    def get(self, layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def get(self, layer_idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get all valid shadow KV pairs for a layer.
 
         Returns:
             keys: [num_kv_heads, count, head_dim]
             values: [num_kv_heads, count, head_dim]
+            positions: [count] original prefill positions
         """
         buf = self.layers[layer_idx]
         if buf.count == 0:
-            return buf.keys[:, :0, :], buf.values[:, :0, :]
-        return buf.keys[:, :buf.count, :].clone(), buf.values[:, :buf.count, :].clone()
+            return (
+                buf.keys[:, :0, :].clone(),
+                buf.values[:, :0, :].clone(),
+                buf.positions[:0].clone(),
+            )
+
+        if buf.count < buf.max_size:
+            indices = torch.arange(buf.count, device=buf.keys.device)
+        else:
+            indices = torch.cat([
+                torch.arange(buf.write_idx, buf.max_size, device=buf.keys.device),
+                torch.arange(0, buf.write_idx, device=buf.keys.device),
+            ], dim=0)
+
+        return (
+            buf.keys.index_select(1, indices).clone(),
+            buf.values.index_select(1, indices).clone(),
+            buf.positions.index_select(0, indices).clone(),
+        )
 
     def clear(self, layer_idx: Optional[int] = None):
         """Clear buffer for a specific layer or all layers."""
@@ -115,6 +156,7 @@ class ShadowBuffer:
             buf = self.layers[idx]
             buf.keys.zero_()
             buf.values.zero_()
+            buf.positions.fill_(-1)
             buf.write_idx = 0
             buf.count = 0
 

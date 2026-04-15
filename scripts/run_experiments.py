@@ -106,6 +106,10 @@ def phases_label(phases) -> str:
     return IdleScheduler.normalize_phases(phases)[2]
 
 
+def policy_label(policy) -> str:
+    return "legacy" if policy is None else str(policy).strip().lower()
+
+
 def benchmark_list(config: dict, args, allowed: list[str] | None = None) -> list[str]:
     if args.benchmarks:
         requested = [name.strip() for name in args.benchmarks.split(",") if name.strip()]
@@ -182,17 +186,18 @@ def build_experiment_matrix(config: dict, args) -> list[dict]:
                     condition_iter = [
                         (
                             condition["idle_budget_ms"],
-                            condition["phases"],
+                            condition.get("phases", 1),
+                            condition.get("policy", idlekv_cfg.get("refinement_policy")),
                         )
                         for condition in conditions
                     ]
                 else:
                     condition_iter = [
-                        (budget, phases)
+                        (budget, phases, idlekv_cfg.get("refinement_policy"))
                         for budget in idlekv_cfg["idle_budgets_ms"]
                         for phases in idlekv_cfg["phases"]
                     ]
-                for budget, phases in condition_iter:
+                for budget, phases, policy in condition_iter:
                         experiments.append({
                             "type": "idlekv",
                             "model": model_cfg,
@@ -200,6 +205,7 @@ def build_experiment_matrix(config: dict, args) -> list[dict]:
                             "ratio": ratio,
                             "idle_budget_ms": budget,
                             "phases": phases,
+                            "policy": policy,
                         })
 
             if not args.only_baselines and not args.only_idlekv:
@@ -227,12 +233,19 @@ def build_experiment_matrix(config: dict, args) -> list[dict]:
 
 def make_manager(model, config: dict, ratio: float, shadow_size: int) -> CompressedKVManager:
     compression_cfg = config["compression"]
+    idlekv_cfg = config.get("idlekv", {})
     return CompressedKVManager(
         model,
         compression_ratio=ratio,
         shadow_size=shadow_size,
         query_buffer_size=compression_cfg["query_buffer_size"],
         offload_full_kv=compression_cfg["offload_full_kv"],
+        default_refinement_policy=idlekv_cfg.get("refinement_policy"),
+        anytime_min_idle_ms=idlekv_cfg.get("min_idle_ms", 20.0),
+        anytime_shadow_only_max_ms=idlekv_cfg.get("shadow_only_max_ms", 80.0),
+        sample_span_size=idlekv_cfg.get("sample_span_size", 16),
+        sample_spans_per_layer=idlekv_cfg.get("sample_spans_per_layer", 2),
+        sample_sampler_seed=idlekv_cfg.get("sample_sampler_seed", 0),
     )
 
 
@@ -257,10 +270,13 @@ def experiment_slug(exp: dict) -> str:
 
     if exp["type"] == "idlekv":
         phases = phases_label(exp["phases"])
-        return (
+        slug = (
             f"idlekv_r{exp['ratio']}_budget{exp['idle_budget_ms']}"
             f"_phases{phases.replace('+', '')}_{model_short}_seed{seed}"
         )
+        if exp.get("policy") is not None:
+            slug += f"_{policy_label(exp['policy'])}"
+        return slug
 
     if exp["type"] == "ablation_buffer":
         return (
@@ -320,6 +336,7 @@ def run_benchmarks(
     press=None,
     idle_budget_ms: float = 0.0,
     phases="1+2",
+    policy=None,
     sync_refresh_stride=None,
 ) -> dict:
     benchmark_results = {}
@@ -340,6 +357,7 @@ def run_benchmarks(
                     press=press,
                     idle_budget_ms=idle_budget_ms,
                     phases=phases,
+                    policy=policy,
                     sync_refresh_stride=sync_refresh_stride,
                     seed=seed,
                 )
@@ -354,6 +372,7 @@ def run_benchmarks(
                 press=press,
                 idle_budget_ms=idle_budget_ms,
                 phases=phases,
+                policy=policy,
                 sync_refresh_stride=sync_refresh_stride,
                 max_input_length=longbench_max_input_length(config, args),
             )
@@ -409,6 +428,7 @@ def execute_experiment(exp: dict, config: dict, args, model, tokenizer, device: 
                 manager=manager,
                 idle_budget_ms=0.0,
                 phases="2",
+                policy=None,
                 sync_refresh_stride=baseline.get("refresh_stride", 15),
             )
         else:
@@ -442,6 +462,7 @@ def execute_experiment(exp: dict, config: dict, args, model, tokenizer, device: 
             "ratio": exp["ratio"],
             "idle_budget_ms": exp["idle_budget_ms"],
             "phases": phases_label(exp["phases"]),
+            "policy": exp.get("policy"),
             "seed": exp["seed"],
         })
         result["benchmark_results"] = run_benchmarks(
@@ -455,6 +476,7 @@ def execute_experiment(exp: dict, config: dict, args, model, tokenizer, device: 
             manager=manager,
             idle_budget_ms=exp["idle_budget_ms"],
             phases=exp["phases"],
+            policy=exp.get("policy"),
         )
 
     elif exp["type"] == "ablation_buffer":

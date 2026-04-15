@@ -1,62 +1,71 @@
 """
-Phase 2: Progressive full-attention cache refresh during idle time.
+Phase 2: progressive full-attention cache refresh during idle time.
 
-Loads the full prefill KV from CPU layer-by-layer, computes full attention
-scores with recent queries, and re-selects top-k tokens for the compressed
-cache. Processes shallow layers first (they propagate errors most severely).
-
-Cost is hardware-dependent; expect tens of milliseconds per layer, with a
-longer idle window needed to refresh all layers. Anytime: each layer is
-independent; interruption yields a valid partial state.
+This remains the explicit full-refresh path. It now also returns updated
+retained prefill positions so the manager's metadata stays consistent.
 """
 
-import torch
+from __future__ import annotations
+
 import math
 from typing import Optional
 
+import torch
+
+from idlekv.core.anytime_repair import (
+    _get_q_proj,
+    compute_importance_scores,
+    project_queries_grouped,
+)
 from idlekv.core.query_buffer import QueryBuffer
-from idlekv.utils.kv_cache import get_layer_kv, num_layers
+from idlekv.utils.kv_cache import build_cache, get_layer_kv, num_layers
+
+
+def _infer_retained_positions(
+    past_key_values,
+    total_layers: int,
+    generated_kv: list,
+) -> list[torch.Tensor]:
+    inferred = []
+    for layer_idx in range(total_layers):
+        current_k, _ = get_layer_kv(past_key_values, layer_idx)
+        generated_len = 0
+        if generated_kv and layer_idx < len(generated_kv):
+            generated_len = generated_kv[layer_idx][0].shape[2]
+        prefill_len = max(0, current_k.shape[2] - generated_len)
+        inferred.append(torch.arange(prefill_len, dtype=torch.long))
+    return inferred
 
 
 def phase2_refresh(
     past_key_values,
-    full_kv_store: 'FullKVStore',
+    full_kv_store: "FullKVStore",
     generated_kv: list,
     query_buffer: QueryBuffer,
     model,
     budget_per_layer: int,
     interrupt_flag: Optional[callable] = None,
     max_layers: Optional[int] = None,
+    retained_positions: Optional[list[torch.Tensor]] = None,
 ):
     """
-    Progressive full-attention refresh using stored prefill KV.
-
-    For each layer (shallow-first), loads the full prefill KV,
-    concatenates with generated tokens' KV, computes importance scores
-    using recent queries, and re-selects top-k for the compressed cache.
-
-    Args:
-        past_key_values: current compressed KV cache
-        full_kv_store: FullKVStore containing prefill KV (CPU or GPU)
-        generated_kv: list of (K, V) per layer for tokens generated since
-                      last prefill. These are always retained (not evicted).
-                      K shape: [1, H, S_gen, D]
-        query_buffer: recent hidden states for scoring
-        model: HF model (for Q projections)
-        budget_per_layer: target compressed cache size (excluding generated tokens)
-        interrupt_flag: callable returning True if tool has returned
-        max_layers: process at most this many layers (for partial refresh)
+    Progressive full-attention refresh using the stored prefill KV.
 
     Returns:
-        Tuple of (updated past_key_values, layers_refreshed)
+        Tuple of (updated past_key_values, updated_retained_positions, layers_refreshed)
     """
-    if query_buffer.count == 0:
-        return past_key_values, 0
+    total_layers = num_layers(past_key_values)
+    retained_positions = retained_positions or _infer_retained_positions(
+        past_key_values,
+        total_layers,
+        generated_kv,
+    )
 
-    from idlekv.utils.kv_cache import build_cache, clone_cache
+    if query_buffer.count == 0:
+        return past_key_values, [pos.clone() for pos in retained_positions], 0
 
     compressed_layers = []
-    total_layers = num_layers(past_key_values)
+    updated_positions: list[torch.Tensor] = []
     layers_to_process = min(total_layers, max_layers or total_layers)
     layers_refreshed = 0
 
@@ -64,62 +73,48 @@ def phase2_refresh(
         if interrupt_flag is not None and interrupt_flag():
             break
 
-        # Get current compressed layer
-        current_k, current_v = get_layer_kv(past_key_values, layer_idx)
-
-        # Load full prefill KV for this layer (CPU or GPU)
         full_k, full_v = full_kv_store.get_layer(layer_idx)
         recent_h = query_buffer.get(layer_idx=layer_idx)
-
-        # Move to device if needed (CPU->GPU transfer or no-op if already on GPU)
         if full_k.device != recent_h.device:
-            full_k = full_k.to(recent_h.device, non_blocking=True)  # [1, H, S_prefill, D]
+            full_k = full_k.to(recent_h.device, non_blocking=True)
             full_v = full_v.to(recent_h.device, non_blocking=True)
-            if recent_h.device.type == 'cuda':
-                torch.cuda.synchronize()  # ensure transfer complete
+            if recent_h.device.type == "cuda":
+                torch.cuda.synchronize()
 
-        B, H, S_prefill, D = full_k.shape
-
-        # Concatenate with generated tokens' KV (these are always kept)
+        _, num_kv_heads, prefill_len, head_dim = full_k.shape
         gen_k, gen_v = generated_kv[layer_idx] if generated_kv else (None, None)
         if gen_k is not None and gen_k.shape[2] > 0:
-            S_gen = gen_k.shape[2]
-            all_k = torch.cat([full_k, gen_k], dim=2)  # [1, H, S_prefill + S_gen, D]
+            all_k = torch.cat([full_k, gen_k], dim=2)
             all_v = torch.cat([full_v, gen_v], dim=2)
+            num_generated = gen_k.shape[2]
         else:
-            S_gen = 0
             all_k = full_k
             all_v = full_v
+            num_generated = 0
 
-        S_total = all_k.shape[2]
-
-        # Project recent hidden states to queries for this layer
-        from idlekv.core.phase1_rescore import _get_q_proj, _project_queries
         q_proj = _get_q_proj(model, layer_idx)
-        queries = _project_queries(recent_h, q_proj, H, D)  # [H, Q, D]
+        queries = project_queries_grouped(recent_h, q_proj, num_kv_heads, head_dim)
+        importance = compute_importance_scores(
+            queries,
+            all_k.squeeze(0),
+            head_dim,
+        ).mean(dim=0)
 
-        # Compute importance scores for ALL tokens (prefill + generated)
-        scale = 1.0 / math.sqrt(D)
-        all_k_squeezed = all_k.squeeze(0)  # [H, S_total, D]
-        all_v_squeezed = all_v.squeeze(0)
-        attn = torch.bmm(queries, all_k_squeezed.transpose(1, 2)) * scale
-        attn_weights = torch.softmax(attn, dim=-1)
-        importance = attn_weights.mean(dim=1).mean(dim=0)  # [S_total]
+        prefill_importance = importance[:prefill_len]
+        keep_budget = min(max(0, budget_per_layer - num_generated), prefill_len)
+        if keep_budget > 0:
+            _, selected = prefill_importance.topk(keep_budget)
+            selected_positions = selected.sort().values
+            selected_k = all_k.squeeze(0).index_select(1, selected_positions)
+            selected_v = all_v.squeeze(0).index_select(1, selected_positions)
+        else:
+            selected_positions = torch.empty(0, dtype=torch.long, device=all_k.device)
+            selected_k = all_k.squeeze(0)[:, :0, :]
+            selected_v = all_v.squeeze(0)[:, :0, :]
 
-        # Always keep generated tokens (they are current, not stale)
-        # Select top-(budget) from prefill tokens
-        prefill_importance = importance[:S_prefill]
-        keep_budget = min(budget_per_layer, S_prefill)
-        _, top_prefill_indices = prefill_importance.topk(keep_budget)
-        top_prefill_indices = top_prefill_indices.sort().values
-
-        # Build new cache: selected prefill tokens + all generated tokens
-        selected_k = all_k_squeezed[:, top_prefill_indices, :]  # [H, keep, D]
-        selected_v = all_v_squeezed[:, top_prefill_indices, :]
-
-        if S_gen > 0:
-            gen_k_squeezed = all_k_squeezed[:, S_prefill:, :]
-            gen_v_squeezed = all_v_squeezed[:, S_prefill:, :]
+        if num_generated > 0:
+            gen_k_squeezed = all_k.squeeze(0)[:, prefill_len:, :]
+            gen_v_squeezed = all_v.squeeze(0)[:, prefill_len:, :]
             new_k = torch.cat([selected_k, gen_k_squeezed], dim=1).unsqueeze(0)
             new_v = torch.cat([selected_v, gen_v_squeezed], dim=1).unsqueeze(0)
         else:
@@ -127,30 +122,22 @@ def phase2_refresh(
             new_v = selected_v.unsqueeze(0)
 
         compressed_layers.append((new_k, new_v))
+        updated_positions.append(selected_positions.detach().cpu())
         layers_refreshed += 1
 
-        # Free GPU memory from the loaded full KV if it was transferred
-        if full_k.device != full_kv_store.device:
-            del full_k, full_v
-
-    # For unprocessed layers, keep the current compressed cache
-    for layer_idx in range(layers_to_process, total_layers):
+    for layer_idx in range(len(compressed_layers), total_layers):
         current_k, current_v = get_layer_kv(past_key_values, layer_idx)
         compressed_layers.append((current_k, current_v))
+        updated_positions.append(retained_positions[layer_idx].clone())
 
-    # Return in same format as input
-    return build_cache(compressed_layers), layers_refreshed
+    return build_cache(compressed_layers), updated_positions, layers_refreshed
 
 
 class FullKVStore:
     """
-    Stores full uncompressed KV cache in memory.
+    Stores full uncompressed prefill KV in memory.
 
-    On A10G-class 24GB GPUs, keep the full backup on CPU by default.
-    Larger-memory GPUs can optionally keep it on-device.
-
-    Created during prefill. Updated after each tool-result prefill.
-    Used during Phase 2 for full-attention refresh.
+    On A10G-class 24 GB GPUs, keep the full backup on CPU by default.
     """
 
     def __init__(self, offload_to_cpu: bool = False):
@@ -160,33 +147,83 @@ class FullKVStore:
 
     @torch.no_grad()
     def store(self, past_key_values):
-        """Store full KV cache, optionally moving to CPU."""
-        from idlekv.utils.kv_cache import get_layer_kv, num_layers
+        from idlekv.utils.kv_cache import get_layer_kv, num_layers as cache_num_layers
 
         self.layers = []
-        total_layers = num_layers(past_key_values)
+        total_layers = cache_num_layers(past_key_values)
 
         for layer_idx in range(total_layers):
             k, v = get_layer_kv(past_key_values, layer_idx)
-
             if self.offload_to_cpu:
-                # Move to CPU to save GPU memory
                 self.layers.append((
                     k.to("cpu", non_blocking=True),
                     v.to("cpu", non_blocking=True),
                 ))
                 self.device = "cpu"
             else:
-                # Keep on the current device when GPU memory allows it.
                 self.layers.append((k, v))
                 self.device = k.device
 
-        if self.offload_to_cpu and k.device.type == 'cuda':
+        if self.offload_to_cpu and k.device.type == "cuda":
             torch.cuda.synchronize()
 
     def get_layer(self, layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get full KV for a single layer."""
         return self.layers[layer_idx]
+
+    def get_spans(
+        self,
+        layer_idx: int,
+        spans: list[tuple[int, int]],
+        *,
+        device: torch.device | str,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+        """
+        Materialize a small set of contiguous prefill spans for one layer.
+
+        Returns:
+            keys: [num_heads, total_tokens, head_dim]
+            values: [num_heads, total_tokens, head_dim]
+            positions: [total_tokens]
+            bytes_loaded: bytes transferred from the cold store tensor slices
+        """
+        full_k, full_v = self.get_layer(layer_idx)
+        if not spans:
+            head_dim = full_k.shape[-1]
+            num_heads = full_k.shape[1]
+            return (
+                torch.empty(num_heads, 0, head_dim, device=device, dtype=full_k.dtype),
+                torch.empty(num_heads, 0, head_dim, device=device, dtype=full_v.dtype),
+                torch.empty(0, device=device, dtype=torch.long),
+                0,
+            )
+
+        k_chunks = []
+        v_chunks = []
+        pos_chunks = []
+        bytes_loaded = 0
+        for start, end in spans:
+            k_slice = full_k[0, :, start:end, :]
+            v_slice = full_v[0, :, start:end, :]
+            k_chunks.append(k_slice)
+            v_chunks.append(v_slice)
+            pos_chunks.append(torch.arange(start, end, dtype=torch.long))
+            bytes_loaded += (
+                k_slice.nelement() * k_slice.element_size() +
+                v_slice.nelement() * v_slice.element_size()
+            )
+
+        keys = torch.cat(k_chunks, dim=1)
+        values = torch.cat(v_chunks, dim=1)
+        positions = torch.cat(pos_chunks, dim=0)
+
+        if str(keys.device) != str(device):
+            keys = keys.to(device, non_blocking=True)
+            values = values.to(device, non_blocking=True)
+            positions = positions.to(device)
+            if torch.device(device).type == "cuda":
+                torch.cuda.synchronize()
+
+        return keys, values, positions, bytes_loaded
 
     def __len__(self):
         return len(self.layers)
@@ -200,5 +237,4 @@ class FullKVStore:
         return total
 
 
-# Legacy alias for backward compatibility
 CPUKVStore = FullKVStore

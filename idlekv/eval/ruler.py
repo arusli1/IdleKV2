@@ -121,6 +121,7 @@ def evaluate_ruler_niah(
     press=None,
     idle_budget_ms: float = 0.0,
     phases="1+2",
+    policy: Optional[str] = None,
     sync_refresh_stride: Optional[int] = None,
     max_new_tokens: int = 32,
     seed: int = 42,
@@ -186,6 +187,7 @@ def evaluate_ruler_niah(
                     press=press,
                     idle_budget_ms=idle_budget_ms,
                     phases=phases,
+                    policy=policy,
                     sync_refresh_stride=sync_refresh_stride,
                 )
                 response = generated["text"]

@@ -8,6 +8,7 @@ from scripts.run_experiments import (
     experiment_slug,
     longbench_max_input_length,
     phases_label,
+    policy_label,
     release_model,
     required_attn_implementation,
 )
@@ -66,6 +67,7 @@ def _config():
         "idlekv": {
             "idle_budgets_ms": [0, 100],
             "phases": [1, "1+2"],
+            "refinement_policy": None,
         },
         "ablations": {
             "shadow_buffer_sizes": [0, 64],
@@ -90,7 +92,7 @@ def test_build_experiment_matrix_supports_explicit_idlekv_conditions():
     config["idlekv"] = {
         "conditions": [
             {"idle_budget_ms": 0, "phases": 1},
-            {"idle_budget_ms": 1000, "phases": "1+2"},
+            {"idle_budget_ms": 1000, "phases": "1+2", "policy": "sampled_spans"},
         ]
     }
     experiments = build_experiment_matrix(config, _args(only_idlekv=True, model="a", seed=7))
@@ -99,11 +101,13 @@ def test_build_experiment_matrix_supports_explicit_idlekv_conditions():
     assert experiments[0]["phases"] == 1
     assert experiments[1]["idle_budget_ms"] == 1000
     assert experiments[1]["phases"] == "1+2"
+    assert experiments[1]["policy"] == "sampled_spans"
 
 
 def test_experiment_slug_encodes_phase_selection():
     assert phases_label(1) == "1"
     assert phases_label("1+2") == "1+2"
+    assert policy_label("sampled_spans") == "sampled_spans"
     exp = {
         "type": "idlekv",
         "model": {"short": "llama8b"},
@@ -111,8 +115,9 @@ def test_experiment_slug_encodes_phase_selection():
         "ratio": 0.7,
         "idle_budget_ms": 100,
         "phases": "1+2",
+        "policy": "sampled_spans",
     }
-    assert experiment_slug(exp) == "idlekv_r0.7_budget100_phases12_llama8b_seed42"
+    assert experiment_slug(exp) == "idlekv_r0.7_budget100_phases12_llama8b_seed42_sampled_spans"
 
 
 def test_required_attn_implementation_uses_eager_for_h2o():
