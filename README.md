@@ -4,22 +4,24 @@ Treating agentic idle time as a first-class compute resource for KV cache qualit
 
 ## Current Read
 
-- The strongest supported claim is `Phase 1 @ 100ms` under delayed-query drift.
-- `qwen7b` on `RULER 4K` is the informative workshop-core slice; `llama8b` at
-  `RULER 4K` is ceiling.
-- `Phase 2` is currently exploratory/debug-only and is not part of the core
-  `SCALE 2026` story.
+- The strongest measured claim is still the delayed-query / short-idle gain:
+  `Phase 1 @ 100ms` helps on the informative Qwen `RULER 4K` slice.
+- The main method direction is now stochastic anytime repair from a cold store.
+- `sampled_spans` is the intended primary runtime path.
+- `shadow_only` is the fast local baseline.
+- `full_refresh` is a long-budget control, not the current center of the story.
 
 ## Start Here
 
 If you are taking over this repo on a fresh SSH/Codex session, read these in order:
 
 1. [STATUS.md](STATUS.md)
-2. [tracked_results/README.md](tracked_results/README.md)
-3. [SETUP.md](SETUP.md)
-4. [TASKS.md](TASKS.md)
-5. [`configs/scale_core.yaml`](configs/scale_core.yaml)
-6. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the workshop-core scope on a single A10G
+2. [STOCHASTIC_ANYTIME_REPAIR_REFINED.md](STOCHASTIC_ANYTIME_REPAIR_REFINED.md)
+3. [tracked_results/README.md](tracked_results/README.md)
+4. [SETUP.md](SETUP.md)
+5. [TASKS.md](TASKS.md)
+6. [`configs/stochastic_core.yaml`](configs/stochastic_core.yaml)
+7. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the stochastic-core scope on a single A10G
 
 ## Setup
 
@@ -82,6 +84,9 @@ Current critical read after those scouts:
 
 Focused next steps:
 ```bash
+# Stochastic main-method matrix
+python scripts/run_experiments.py --config configs/stochastic_core.yaml
+
 # Decode operating-point check
 python scripts/throughput_spotcheck.py \
   --model Qwen/Qwen2.5-7B-Instruct \
@@ -94,20 +99,22 @@ python scripts/run_experiments.py \
   --config configs/llama_hardness_probe.yaml \
   --num-samples 10
 
-# SCALE workshop-core matrix
-python scripts/run_experiments.py --config configs/scale_core.yaml
-
 # Minimal shadow-buffer mechanism ablation
 python scripts/run_experiments.py \
   --config configs/scale_mechanism_ablation.yaml \
   --only-ablations
+
+# Historical short-idle workshop-core reference matrix
+python scripts/run_experiments.py --config configs/scale_core.yaml
 ```
 
 ### Step 3: Broader A10G Expansion Matrix
-Once the scouts have locked the settings, the preferred workshop-core run is
-`configs/scale_core.yaml`. The broader single-A10G matrix in `configs/main.yaml`
-is still useful, but it should be treated as an exploratory expansion path, not
-the default paper run. On one A10G, the broader stable path is:
+Once the scouts have locked the settings, the preferred main-method run is
+`configs/stochastic_core.yaml`. The older workshop-core reference matrix in
+`configs/scale_core.yaml` is still useful for the narrower short-idle claim,
+and the broader single-A10G matrix in `configs/main.yaml` remains an
+exploratory expansion path rather than the default paper run. On one A10G, the
+broader stable path is:
 - baselines run on `RULER 4K` plus `LongBench`
 - IdleKV and ablations default to `RULER 4K` at `r=0.7`
 - `sync_refresh` excluded from the default matrix because its clean isolated
@@ -151,15 +158,17 @@ python scripts/plot_figures.py --results-dir results/
 IdleKV/
 ├── STATUS.md                # Current scope, handoff, and run plan
 ├── README.md                # High-level project entrypoint
+├── STOCHASTIC_ANYTIME_REPAIR_REFINED.md # Main-method proposal and paper rewrite
 ├── SETUP.md                 # Environment and run instructions
 ├── TASKS.md                 # Execution checklist and experiment plan
 ├── idlekv/
 │   ├── core/                    # Core IdleKV components
 │   │   ├── compression.py       # CompressedKVManager (main interface)
-│   │   ├── phase1_rescore.py   # Fast re-scoring with shadow buffer
-│   │   ├── phase2_refresh.py   # Progressive full-attention refresh
-│   │   ├── scheduler.py        # Idle-time scheduler
-│   │   ├── shadow_buffer.py    # Recently evicted KV storage
+│   │   ├── anytime_repair.py   # Shared stochastic repair primitives
+│   │   ├── phase1_rescore.py   # Shadow-only / merged candidate repair
+│   │   ├── phase2_refresh.py   # Explicit full-refresh control path
+│   │   ├── scheduler.py        # Policy-driven idle-time scheduler
+│   │   ├── shadow_buffer.py    # Recently evicted KV storage + positions
 │   │   └── query_buffer.py     # Recent query tracking
 │   ├── eval/                   # Benchmark implementations
 │   │   ├── ruler.py            # RULER needle-in-a-haystack
@@ -176,6 +185,7 @@ IdleKV/
 │       └── timing.py           # Performance measurement
 ├── configs/
 │   ├── main.yaml              # Main experiment configuration
+│   ├── stochastic_core.yaml   # Preferred stochastic anytime core matrix
 │   ├── preliminary_idlekv.yaml # Reduced scout used to choose main settings
 │   ├── qwen_seed_followup.yaml # Qwen-only seed robustness scout
 │   ├── scale_core.yaml        # SCALE workshop-core matrix

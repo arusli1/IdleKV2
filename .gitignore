@@ -56,3 +56,14 @@ Thumbs.db
 
 # Logs
 *.log
+
+# LaTeX build artifacts
+aux/
+paper/aux/
+paper/algorithm.sty
+paper/algorithmic.sty
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls

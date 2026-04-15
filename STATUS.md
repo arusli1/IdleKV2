@@ -7,22 +7,28 @@ Read this first if you are taking over the repo on a fresh SSH/Codex session.
 - Completed evidence:
   - delayed-query pilot: compressed `91.7%` -> `100.0%` with `27.4ms` Phase 1
   - Qwen scout: `0ms` `0.877` -> `100ms Phase 1` `0.903`
-- Current paper scope:
-  - `SCALE 2026` workshop-core story is `Phase 1 @ 100ms`
-  - `Phase 2` is exploratory/debug-only
+- Current main-method read:
+  - stochastic anytime repair is now the main method direction
+  - `sampled_spans` is the intended primary runtime path
+  - `shadow_only` is the fast local baseline
+  - `full_refresh` remains a long-budget control, not the core claim
 - Run next:
+  - `configs/stochastic_core.yaml`
   - `scripts/throughput_spotcheck.py`
-  - `configs/llama_hardness_probe.yaml`
-  - `configs/scale_core.yaml`
   - `configs/scale_mechanism_ablation.yaml`
+  - optional historical reference: `configs/scale_core.yaml`
 
 ## Current State
 
 - Core runtime is implemented and the current test suite passes.
 - The delayed-query pilot is validated.
 - The experiment runner is real and resumable; it is no longer a mock scaffold.
-- The repo is intentionally scoped to a stable single-A10G matrix with a
-  sharper `SCALE 2026` workshop-core path on top.
+- The repo now has a policy-driven stochastic path:
+  `shadow_only`, `sampled_spans`, `full_refresh`.
+- The implementation tracks retained prefill positions, samples cold CPU-KV
+  spans, and commits interruptible merged top-k repairs.
+- The repo is intentionally scoped to a stable single-A10G matrix, with a
+  sharper stochastic-core path on top.
 - A reduced preliminary IdleKV scout is now complete and is more informative
   than the original long baseline-first queue for choosing the next runs.
 - The Qwen seed follow-up scout is also complete and has materially narrowed
@@ -45,7 +51,14 @@ Critical read on evidence bar:
   belongs at all.
 
 Current validated test status:
-- `44 passed`
+- `47 passed`
+
+Latest quick validation status:
+- `pytest -q`: `47 passed`
+- official runner dry-run passes for `configs/stochastic_core.yaml`
+- a real `qwen7b` stochastic smoke run was intentionally stopped before
+  completion to avoid a long job, so there is still no fresh measured 7B
+  stochastic result beyond the earlier Qwen Phase-1-centered scouts
 
 ## What Was Validated
 
@@ -151,6 +164,22 @@ Tracked snapshot:
 ## Stable Default A10G Matrix
 
 This is the scoped default matrix for a single `A10G 24GB`.
+
+Preferred main-method matrix:
+- `configs/stochastic_core.yaml`
+- benchmark: `Qwen RULER 4K`
+- method: stochastic anytime repair via `policy=sampled_spans`
+- budgets: `0, 50, 100, 200, 500, 1000 ms`
+- ratios: `r=0.5`, `r=0.7`
+- purpose:
+  - establish the first end-to-end stochastic anytime curve
+  - compare against compressed baselines on the informative slice
+  - keep transfers and memory conservative on the A10G
+
+Historical workshop-core matrix:
+- `configs/scale_core.yaml`
+- still useful as the narrow short-idle `Phase 1 @ 100ms` reference
+- no longer the preferred main-method config
 
 Baselines:
 - benchmarks: `RULER 4K` + `LongBench`
@@ -266,9 +295,10 @@ Commands:
 ```bash
 python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
 python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
+python scripts/run_experiments.py --config configs/stochastic_core.yaml --dry-run --model qwen7b
 python scripts/throughput_spotcheck.py --model Qwen/Qwen2.5-7B-Instruct --context-length 4096 --num-trials 3 --num-measure-tokens 128
 python scripts/run_experiments.py --config configs/llama_hardness_probe.yaml --num-samples 10
-python scripts/run_experiments.py --config configs/scale_core.yaml
+python scripts/run_experiments.py --config configs/stochastic_core.yaml
 python scripts/run_experiments.py --config configs/scale_mechanism_ablation.yaml --only-ablations
 ```
 
@@ -319,7 +349,9 @@ Use `tmux` and consider `--skip-existing` if resuming after interruption.
 
 For a deeper handoff, read these next:
 - `README.md`
+- `STOCHASTIC_ANYTIME_REPAIR_REFINED.md`
 - `SETUP.md`
 - `TASKS.md`
+- `configs/stochastic_core.yaml`
 - `configs/main.yaml`
 - `paper/idlekv_scale.tex`

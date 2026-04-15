@@ -1,6 +1,6 @@
 # IdleKV Execution Plan
 
-**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`44 passed`).
+**✅ Core Implementation Complete** - Core runtime is implemented and the current suite passes locally (`47 passed`).
 
 **📋 Prerequisites**: Complete `SETUP.md` first - A10G environment ready, models downloaded, HF authenticated.
 
@@ -34,6 +34,8 @@ Critical scope rule:
 ## 🔬 Current Confirmation Priority (~1-2 hours)
 
 - The Qwen follow-up scout is finished.
+- The stochastic anytime runtime path is implemented.
+- The official runner dry-runs correctly for `configs/stochastic_core.yaml`.
 - Key result:
   - `0ms, phase=1`: `0.877`
   - `100ms, phase=1`: `0.903`
@@ -45,6 +47,11 @@ Critical scope rule:
   - Phase 2 is currently a liability, not part of the workshop-core story
 
 Next tiny runs:
+- Stochastic core run
+  - use `configs/stochastic_core.yaml`
+  - this is now the preferred main-method experiment
+  - goal: produce the first measured stochastic anytime curve on the
+    informative `qwen7b / RULER 4K` slice
 - Throughput / wall-clock spot-check
   - use `scripts/throughput_spotcheck.py`
   - compare compressed no-idle `r=0.7` vs IdleKV `r=0.7, 100ms, phase=1`
@@ -56,7 +63,7 @@ Next tiny runs:
     later A100 expansion
 
 If those confirm the current read:
-- main workshop matrix: `configs/scale_core.yaml`
+- main workshop / method matrix: `configs/stochastic_core.yaml`
 - minimal mechanism ablation: `configs/scale_mechanism_ablation.yaml`
 
 ## 🏃‍♂️ Workshop-Core Experiments (~same day on one A10G)
@@ -64,7 +71,8 @@ If those confirm the current read:
 **⚠️ Use `tmux` for long runs - SSH disconnects will kill processes**
 
 **Preferred SCALE 2026 run path**
-- `configs/scale_core.yaml` is the preferred workshop-core matrix
+- `configs/stochastic_core.yaml` is the preferred main-method matrix
+- `configs/scale_core.yaml` remains a narrower historical short-idle reference
 - `configs/scale_mechanism_ablation.yaml` is the preferred minimal mechanism ablation
 - `configs/main.yaml` remains a broader constrained-hardware expansion matrix, not the default paper run
 
@@ -77,7 +85,7 @@ Interpretation:
 | -------------------------- | ------------------------------ | ------------ | ----------------------------------------------------------- |
 | **Throughput spot-check**  | `scripts/throughput_spotcheck.py` | <1 hour   | shortlisted IdleKV setting stays close to compressed baseline decode speed |
 | **Llama hardness probe**   | `configs/llama_hardness_probe.yaml` | <1 hour | enough non-ceiling evidence to decide whether Llama belongs in the workshop package |
-| **SCALE core matrix**      | `configs/scale_core.yaml`      | same day     | core method/baseline comparison across the chosen workshop slice |
+| **Stochastic core matrix** | `configs/stochastic_core.yaml` | same day     | main-method comparison across the chosen stochastic anytime slice |
 | **Mechanism ablation**     | `configs/scale_mechanism_ablation.yaml` | same day | shadow-buffer contribution is isolated cleanly |
 
 
@@ -109,7 +117,7 @@ Use this only after the workshop-core matrix is locked.
 
 | Task                                | Runtime  | Exit Criteria                                                         |
 | ----------------------------------- | -------- | --------------------------------------------------------------------- |
-| **SCALE 7-page draft**              | ~1 day   | one clean workshop story centered on delayed-query + Phase 1 / 100ms |
+| **SCALE 7-page draft**              | ~1 day   | one clean workshop story centered on stochastic anytime repair |
 | **Late-breaker fallback**           | ~3 hours | compress the same evidence into 3 pages if broader runs slip         |
 | **Experiment results**              | ~4 hours | only measured tables/figures for the active submission scope         |
 | **Introduction + related work**     | ~4 hours | motivation + prior KV-cache work positioned honestly                 |
@@ -147,9 +155,10 @@ Use this only after the workshop-core matrix is locked.
 
 ### **Quality Checklist**
 
-- `make test` passes (`44 passed`) ✅
+- `make test` passes (`47 passed`) ✅
 - `make lint` passes (clean code)
-- All results reproducible from `configs/main.yaml`
+- Main-method run reproducible from `configs/stochastic_core.yaml`
+- Broader expansion reproducible from `configs/main.yaml`
 - Larger-memory expansion is reproducible from `configs/a100_scaleup.yaml`
 - JSON results include: model, method, seed, metrics, timing
 - Figures generated from code (not hand-made)
