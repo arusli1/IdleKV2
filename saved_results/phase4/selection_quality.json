@@ -1,0 +1,38 @@
+{
+  "by_strategy": {
+    "dot_product": {
+      "correct_selections": 0,
+      "selection_precision": null,
+      "total_reparable": 0
+    },
+    "l2_norm": {
+      "correct_selections": 0,
+      "selection_precision": null,
+      "total_reparable": 0
+    },
+    "random": {
+      "correct_selections": 0,
+      "selection_precision": null,
+      "total_reparable": 0
+    },
+    "recency_inverse": {
+      "correct_selections": 0,
+      "selection_precision": null,
+      "total_reparable": 0
+    }
+  },
+  "incorrect_records": 0,
+  "k_budget": 512,
+  "matching_records": 50,
+  "max_examples": 50,
+  "method": "snapkv",
+  "missing_log_records": 0,
+  "missing_qvec_records": 0,
+  "note": "Current Phase 3 logs capture one shared observation-window q-vector snapshot per eviction event. That means l2_norm and dot_product are constant within each single-example buffer, so the existing artifact set is not sufficient for a meaningful selector-quality comparison.",
+  "reason": "The requested Phase 3 slice has no incorrect examples, so selector quality cannot be measured.",
+  "reparable_records": 0,
+  "shared_q_context_per_example": true,
+  "status": "insufficient_failures",
+  "task_key": "vt_4hop",
+  "top_k": 250
+}

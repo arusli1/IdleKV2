@@ -1,0 +1,47 @@
+{
+  "0.1": {
+    "budget_ms": 90.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "0.5": {
+    "budget_ms": 450.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "1.0": {
+    "budget_ms": 900.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "2.0": {
+    "budget_ms": 1800.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "5.0": {
+    "budget_ms": 4500.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "8.0": {
+    "budget_ms": 7200.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "15.0": {
+    "budget_ms": 13500.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "30.0": {
+    "budget_ms": 27000.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  },
+  "60.0": {
+    "budget_ms": 54000.0,
+    "max_K": 2000,
+    "scoring_overhead_ms": 14.15557152358815
+  }
+}

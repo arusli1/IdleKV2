@@ -1,9 +1,7 @@
 # Project Status
 
-This repo is currently being kept to a smoke-run standard for phases before
-Phase 4. That means the goal so far is to prove the path works, preserve the
-important outputs, and keep the repo understandable before the rigorous
-experiment pass.
+This repo has been kept to a minimum-viable standard through Phase 4. The first
+Phase 4 profiling pass has now been executed on the local GPU.
 
 ## Current Readout
 
@@ -13,7 +11,7 @@ experiment pass.
 | P1 | Done enough for smoke | The harness and key summaries exist, but the phase note is still partly a scaffold rather than a final paper table. |
 | P2 | Done | KV round-trip, injection, transfer profiling, and heatmap generation are in place. |
 | P3 | Done enough for smoke | Eviction policies, tests, live smoke, and pilot/full degradation runs exist. |
-| P4 | Next | Build CPU eviction buffer and profile feasible repair budget. |
+| P4 | Done enough for MVP | Buffer/profiling code exists and the first live profiling pass wrote the feasibility frontier plus transfer/scoring/attention/end-to-end artifacts. |
 
 ## Canonical Saved Summaries
 
@@ -24,6 +22,13 @@ experiment pass.
 - `saved_results/phase3/phase3_suite_summary.json`
 - `saved_results/phase3/phase3_pilot10_summary.json`
 - `saved_results/phase3/phase3_full100_summary.json`
+- `saved_results/phase4/feasibility_frontier.json`
+- `saved_results/phase4/transfer_latency.json`
+- `saved_results/phase4/scoring_latency.json`
+- `saved_results/phase4/attention_overhead.json`
+- `saved_results/phase4/end_to_end_repair.json`
+- `saved_results/phase4/selection_quality.json`
+- `saved_results/phase4/run_metadata.json`
 
 ## Notes
 
@@ -33,5 +38,9 @@ experiment pass.
   directories, but those directories are ignored by git.
 - `saved_results/phase3/` also keeps the small Phase 3 launcher log/status pair
   so there is no separate top-level `run_logs/` directory.
+- The first P4 run used the real local geometry (`32K` live fixture,
+  `k_budget=4096`) and found that the current transfer sweep saturates at the
+  measured ceiling of `K=2000`, so the next P4 refinement should extend the
+  transfer grid upward if the paper needs a wider frontier.
 - `docs/phases/` contains the human-readable phase notes in order from P0 to
-  P3.
+  P4.

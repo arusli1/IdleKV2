@@ -1,0 +1,47 @@
+{
+  "attention_extra_token_counts": [
+    50,
+    100,
+    250,
+    500,
+    1000
+  ],
+  "attention_trials": 20,
+  "live_fixture": {
+    "context_tokens": 32768,
+    "evicted_tokens": 28672,
+    "k_budget": 4096,
+    "obs_window_size": 32,
+    "query_tokens": 20
+  },
+  "log_buffer_entries": 10000,
+  "max_buffer_tokens": 10000,
+  "phase3_log_root": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_eviction_logs",
+  "profiling_log_dir": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_eviction_logs/benchmark/phase1-current-generator-noise-filler-2026-04-21/MQNIAH4q/snapkv/k512",
+  "raw_examples_dir": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_raw_examples/phase1-current-generator-noise-filler-2026-04-21",
+  "repair_top_k_values": [
+    50,
+    100,
+    250,
+    500
+  ],
+  "repair_trials": 20,
+  "scoring_buffer_sizes": [
+    500,
+    1000,
+    2000,
+    5000
+  ],
+  "scoring_trials": 50,
+  "smoke": false,
+  "strategy": "l2_norm",
+  "transfer_token_counts": [
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000
+  ],
+  "transfer_trials": 50
+}

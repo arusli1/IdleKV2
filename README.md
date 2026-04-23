@@ -9,6 +9,7 @@ tool calls to repair KV-cache damage caused by eviction.
 - `phases/phase1_degradation/`: Phase 1 degradation harness and task variants.
 - `phases/phase2_kv_cache/`: Phase 2 KV save/load/slice/inject validation.
 - `phases/phase3_eviction/`: Phase 3 eviction policies, smoke suite, and degradation benchmark.
+- `phases/phase4_eviction_buffer/`: Phase 4 CPU eviction buffer and profiling setup.
 - `ruler/`: vendored upstream RULER checkout.
 - `paper/`: paper draft and figures.
 - `saved_results/`: tracked memory layer with the canonical P0-P3 summaries and the small Phase 3 launcher log/status pair.
@@ -32,7 +33,7 @@ tool calls to repair KV-cache damage caused by eviction.
   experiment tables.
 - P2 KV access layer: validated.
 - P3 eviction validation: done enough for smoke.
-- P4 CPU eviction buffer: next.
+- P4 CPU eviction buffer: implemented and first profiling pass complete.
 
 See `docs/project-status.md` for the current phase-by-phase readout.
 
@@ -42,6 +43,7 @@ See `docs/project-status.md` for the current phase-by-phase readout.
 - `docs/phases/phase1.md`
 - `docs/phases/phase2.md`
 - `docs/phases/phase3.md`
+- `docs/phases/phase4.md`
 
 ## Key Docs
 

@@ -1,0 +1,36 @@
+{
+  "baseline_p50_ms": 25.588824006263167,
+  "by_k": {
+    "50": {
+      "actual_k": 50.0,
+      "overhead_pct": 0.3742726702115434,
+      "overhead_vs_base_ms": 0.0957719748839736,
+      "total_p50_ms": 25.68459598114714
+    },
+    "100": {
+      "actual_k": 100.0,
+      "overhead_pct": -0.3561535373382762,
+      "overhead_vs_base_ms": -0.09113550186157227,
+      "total_p50_ms": 25.497688504401594
+    },
+    "250": {
+      "actual_k": 250.0,
+      "overhead_pct": 1.940626599213254,
+      "overhead_vs_base_ms": 0.4965835250914097,
+      "total_p50_ms": 26.085407531354576
+    },
+    "500": {
+      "actual_k": 500.0,
+      "overhead_pct": 3.277879977470803,
+      "overhead_vs_base_ms": 0.8387709385715425,
+      "total_p50_ms": 26.42759494483471
+    },
+    "1000": {
+      "actual_k": 1000.0,
+      "overhead_pct": 7.071978040377086,
+      "overhead_vs_base_ms": 1.8096360145136714,
+      "total_p50_ms": 27.398460020776838
+    }
+  },
+  "query_tokens": 20
+}
