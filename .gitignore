@@ -2,23 +2,20 @@
 __pycache__/
 *.py[cod]
 
+# Local virtual environment
+.venv/
+
 # Local model weights and caches
 models/
 
-# Nested benchmark checkout and transient Python output
-benchmark/RULER/
-benchmark/__pycache__/
+# Vendored benchmark checkout and transient Python output
+ruler/
 
-# Generated benchmark outputs
-ruler_benchmark_initial_test/__pycache__/
-ruler_benchmark_initial_test/artifacts/
-ruler_benchmark_initial_test/logs/
-ruler_benchmark_initial_test/results/
-
-ruler_kvr_phase1/__pycache__/
-ruler_kvr_phase1/artifacts/
-ruler_kvr_phase1/logs/
-ruler_kvr_phase1/results/
+# Generated phase outputs
+phases/*/__pycache__/
+phases/*/artifacts/
+phases/*/logs/
+phases/*/results/
 
 # LaTeX build artifacts
 paper/*.aux

@@ -1,0 +1,86 @@
+{
+  "context_tokens": 384,
+  "k_budget": 96,
+  "policies": {
+    "query_aware_snapkv": {
+      "evicted_count": 288,
+      "evicted_device": "cpu",
+      "kept_count": 96,
+      "kept_positions_head": [
+        0,
+        1,
+        2,
+        3,
+        58,
+        59,
+        60,
+        65
+      ],
+      "log_path": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_eviction_logs/live_smoke/query_aware_snapkv/live_smoke.json",
+      "obs_window_q_vecs_shape": [
+        28,
+        9,
+        128
+      ],
+      "task_relevant_survived": [
+        true,
+        false,
+        true
+      ]
+    },
+    "snapkv": {
+      "evicted_count": 288,
+      "evicted_device": "cpu",
+      "kept_count": 96,
+      "kept_positions_head": [
+        0,
+        1,
+        2,
+        3,
+        29,
+        148,
+        163,
+        195
+      ],
+      "log_path": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_eviction_logs/live_smoke/snapkv/live_smoke.json",
+      "obs_window_q_vecs_shape": [
+        28,
+        16,
+        128
+      ],
+      "task_relevant_survived": [
+        true,
+        false,
+        true
+      ]
+    },
+    "streaming_llm": {
+      "evicted_count": 288,
+      "evicted_device": "cpu",
+      "kept_count": 96,
+      "kept_positions_head": [
+        0,
+        1,
+        2,
+        3,
+        292,
+        293,
+        294,
+        295
+      ],
+      "log_path": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_eviction_logs/live_smoke/streaming_llm/live_smoke.json",
+      "obs_window_q_vecs_shape": [
+        28,
+        1,
+        128
+      ],
+      "task_relevant_survived": [
+        true,
+        false,
+        true
+      ]
+    }
+  },
+  "query_tokens": 9,
+  "repo_root": "/home/ubuntu/IdleKV"
+}

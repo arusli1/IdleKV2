@@ -1,0 +1,291 @@
+{
+  "generated_at_utc": "2026-04-18T22:45:55.139652+00:00",
+  "model_id": "Qwen/Qwen2.5-7B-Instruct",
+  "model_path": "/home/ubuntu/IdleKV/models/Qwen2.5-7B-Instruct",
+  "package_versions": {
+    "huggingface_hub": "1.11.0",
+    "requests": "2.33.1",
+    "transformers": "5.5.4",
+    "vllm": "0.19.1"
+  },
+  "server": {
+    "type": "vllm",
+    "port": 5000,
+    "dtype": "bfloat16",
+    "tensor_parallel_size": 1,
+    "max_model_len": 32768,
+    "gpu_memory_utilization": 0.9,
+    "log_path": "/home/ubuntu/IdleKV/phases/phase0_baseline/logs/vllm_qwen25.log"
+  },
+  "checks": {
+    "tokenizer": {
+      "chat_template_matches_expected": true,
+      "rendered_prompt_tokens": 34,
+      "tokenizer_model_max_length": 131072,
+      "config_max_position_embeddings": 32768
+    },
+    "s_niah_4k_sample_inspection": [
+      {
+        "index": 1294,
+        "length": 4078,
+        "contains_all_outputs": true,
+        "outputs": [
+          "5437923"
+        ],
+        "input_head": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nA special magic number is hidden within the following text. Make sure to memorize it. I will quiz you about the number afterw",
+        "input_tail": "re we go. There and back again.\nThe grass is green. The sky is blue. The sun is yellow. Here we go. There and back again.\nWhat is the special magic number for jittery-hospital mentioned in the provided text?<|im_end|>\n<|im_start|>assistant\n"
+      },
+      {
+        "index": 8939,
+        "length": 4078,
+        "contains_all_outputs": true,
+        "outputs": [
+          "3094235"
+        ],
+        "input_head": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nA special magic number is hidden within the following text. Make sure to memorize it. I will quiz you about the number afterw",
+        "input_tail": "w. Here we go. There and back again.\nThe grass is green. The sky is blue. The sun is yellow. Here we go. There and back again.\nWhat is the special magic number for roomy-devil mentioned in the provided text?<|im_end|>\n<|im_start|>assistant\n"
+      },
+      {
+        "index": 14529,
+        "length": 4087,
+        "contains_all_outputs": true,
+        "outputs": [
+          "5918715"
+        ],
+        "input_head": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nA special magic number is hidden within the following text. Make sure to memorize it. I will quiz you about the number afterw",
+        "input_tail": " go. There and back again.\nThe grass is green. The sky is blue. The sun is yellow. Here we go. There and back again.\nWhat is the special magic number for scintillating-slipper mentioned in the provided text?<|im_end|>\n<|im_start|>assistant\n"
+      },
+      {
+        "index": 1832,
+        "length": 4081,
+        "contains_all_outputs": true,
+        "outputs": [
+          "4226067"
+        ],
+        "input_head": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nA special magic number is hidden within the following text. Make sure to memorize it. I will quiz you about the number afterw",
+        "input_tail": "Here we go. There and back again.\nThe grass is green. The sky is blue. The sun is yellow. Here we go. There and back again.\nWhat is the special magic number for smoggy-caliber mentioned in the provided text?<|im_end|>\n<|im_start|>assistant\n"
+      },
+      {
+        "index": 6962,
+        "length": 4075,
+        "contains_all_outputs": true,
+        "outputs": [
+          "4823498"
+        ],
+        "input_head": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nA special magic number is hidden within the following text. Make sure to memorize it. I will quiz you about the number afterw",
+        "input_tail": "Here we go. There and back again.\nThe grass is green. The sky is blue. The sun is yellow. Here we go. There and back again.\nWhat is the special magic number for typical-toilet mentioned in the provided text?<|im_end|>\n<|im_start|>assistant\n"
+      }
+    ],
+    "context_32k_accessible": true
+  },
+  "lengths": {
+    "4096": {
+      "scores": {
+        "niah_single_1": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "niah_single_2": {
+          "score": 99.8,
+          "nulls": "0/500"
+        },
+        "niah_single_3": {
+          "score": 99.8,
+          "nulls": "0/500"
+        },
+        "vt_2hop": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "fwe": {
+          "score": 80.33,
+          "nulls": "0/500"
+        }
+      },
+      "aggregates": {
+        "S-NIAH": {
+          "score": 99.86666666666667,
+          "component_tasks": [
+            "niah_single_1",
+            "niah_single_2",
+            "niah_single_3"
+          ]
+        }
+      },
+      "paths": {
+        "data_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/data",
+        "pred_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred",
+        "summary_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/summary.csv",
+        "submission_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/submission.csv"
+      },
+      "prediction_files": {
+        "niah_single_1": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/niah_single_1.jsonl",
+        "niah_single_2": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/niah_single_2.jsonl",
+        "niah_single_3": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/niah_single_3.jsonl",
+        "vt_2hop": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/vt_2hop.jsonl",
+        "fwe": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/4096/pred/fwe.jsonl"
+      }
+    },
+    "8192": {
+      "scores": {
+        "niah_single_1": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "niah_single_2": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "niah_single_3": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "vt_2hop": {
+          "score": 99.93,
+          "nulls": "0/500"
+        },
+        "fwe": {
+          "score": 82.67,
+          "nulls": "0/500"
+        }
+      },
+      "aggregates": {
+        "S-NIAH": {
+          "score": 100.0,
+          "component_tasks": [
+            "niah_single_1",
+            "niah_single_2",
+            "niah_single_3"
+          ]
+        }
+      },
+      "paths": {
+        "data_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/data",
+        "pred_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred",
+        "summary_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/summary.csv",
+        "submission_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/submission.csv"
+      },
+      "prediction_files": {
+        "niah_single_1": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/niah_single_1.jsonl",
+        "niah_single_2": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/niah_single_2.jsonl",
+        "niah_single_3": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/niah_single_3.jsonl",
+        "vt_2hop": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/vt_2hop.jsonl",
+        "fwe": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/8192/pred/fwe.jsonl"
+      }
+    },
+    "16384": {
+      "scores": {
+        "niah_single_1": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "niah_single_2": {
+          "score": 100.0,
+          "nulls": "0/500"
+        },
+        "niah_single_3": {
+          "score": 99.8,
+          "nulls": "0/500"
+        },
+        "vt_2hop": {
+          "score": 99.67,
+          "nulls": "0/500"
+        },
+        "fwe": {
+          "score": 84.93,
+          "nulls": "0/500"
+        }
+      },
+      "aggregates": {
+        "S-NIAH": {
+          "score": 99.93333333333334,
+          "component_tasks": [
+            "niah_single_1",
+            "niah_single_2",
+            "niah_single_3"
+          ]
+        }
+      },
+      "paths": {
+        "data_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/data",
+        "pred_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred",
+        "summary_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/summary.csv",
+        "submission_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/submission.csv"
+      },
+      "prediction_files": {
+        "niah_single_1": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/niah_single_1.jsonl",
+        "niah_single_2": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/niah_single_2.jsonl",
+        "niah_single_3": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/niah_single_3.jsonl",
+        "vt_2hop": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/vt_2hop.jsonl",
+        "fwe": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/16384/pred/fwe.jsonl"
+      }
+    },
+    "32768": {
+      "scores": {
+        "niah_single_1": {
+          "score": 99.8,
+          "nulls": "0/500"
+        },
+        "niah_single_2": {
+          "score": 99.8,
+          "nulls": "0/500"
+        },
+        "niah_single_3": {
+          "score": 99.4,
+          "nulls": "0/500"
+        },
+        "vt_2hop": {
+          "score": 98.2,
+          "nulls": "0/500"
+        },
+        "fwe": {
+          "score": 86.67,
+          "nulls": "0/500"
+        }
+      },
+      "aggregates": {
+        "S-NIAH": {
+          "score": 99.66666666666667,
+          "component_tasks": [
+            "niah_single_1",
+            "niah_single_2",
+            "niah_single_3"
+          ]
+        }
+      },
+      "paths": {
+        "data_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/data",
+        "pred_dir": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred",
+        "summary_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/summary.csv",
+        "submission_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/submission.csv"
+      },
+      "prediction_files": {
+        "niah_single_1": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/niah_single_1.jsonl",
+        "niah_single_2": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/niah_single_2.jsonl",
+        "niah_single_3": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/niah_single_3.jsonl",
+        "vt_2hop": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/vt_2hop.jsonl",
+        "fwe": "/home/ubuntu/IdleKV/phases/phase0_baseline/artifacts/benchmark_root/qwen2.5-7b-instruct/synthetic/32768/pred/fwe.jsonl"
+      }
+    }
+  },
+  "artifacts": {
+    "degradation_curve_csv": "/home/ubuntu/IdleKV/phases/phase0_baseline/results/degradation_curve.csv",
+    "degradation_curve_svg": "/home/ubuntu/IdleKV/phases/phase0_baseline/results/degradation_curve.svg"
+  },
+  "acceptance": {
+    "s_niah_4k_min": {
+      "length": 4096,
+      "aggregate": "S-NIAH",
+      "minimum_score": 98.0,
+      "actual_score": 99.86666666666667,
+      "pass": true
+    },
+    "s_niah_32k_min": {
+      "length": 32768,
+      "aggregate": "S-NIAH",
+      "minimum_score": 85.0,
+      "actual_score": 99.66666666666667,
+      "pass": true
+    }
+  }
+}

@@ -1,0 +1,1112 @@
+{
+  "budgets": [
+    "k128",
+    "k256",
+    "k512",
+    "k1024",
+    "k2048",
+    "FullKV"
+  ],
+  "context_length": 32768,
+  "dataset_seed_offset": 0,
+  "elapsed_minutes": 100.8032,
+  "elapsed_s": 6048.19217,
+  "environment": {
+    "cache_runtime_type": "DynamicCache",
+    "config_torch_dtype": "torch.bfloat16",
+    "device": "cuda:0",
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpu_total_memory_gb": 101.97,
+    "head_dim": 128,
+    "layer0_dtype": "torch.bfloat16",
+    "layer0_key_shape": [
+      1,
+      4,
+      2,
+      128
+    ],
+    "layer0_value_shape": [
+      1,
+      4,
+      2,
+      128
+    ],
+    "model_dir": "/home/ubuntu/IdleKV/models/Qwen2.5-7B-Instruct",
+    "num_attention_heads": 28,
+    "num_hidden_layers": 28,
+    "num_key_value_heads": 4
+  },
+  "generator_compat_version": "phase1-current-generator-noise-filler-2026-04-21",
+  "label": "full100",
+  "methods": [
+    "fullkv",
+    "snapkv",
+    "query_aware_snapkv",
+    "streaming_llm"
+  ],
+  "num_samples": 100,
+  "raw_record_count": 4800,
+  "schema_version": "phase3-benchmark-v1",
+  "summary_dir": "/home/ubuntu/IdleKV/phases/phase3_eviction/results/phase3_degradation/full100",
+  "task_summaries": {
+    "mq_niah_4q": {
+      "budget_order": [
+        "k128",
+        "k256",
+        "k512",
+        "k1024",
+        "k2048",
+        "FullKV"
+      ],
+      "context_length": 32768,
+      "generator_compat_version": "phase1-current-generator-noise-filler-2026-04-21",
+      "methods": {
+        "fullkv": {
+          "FullKV": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 1.0,
+            "full_recall_rate": 0.05,
+            "mean_generation_duration_s": 3.1252,
+            "mean_policy_duration_s": 0.001817,
+            "mean_recall": 3.05,
+            "mean_score_fraction": 0.7625,
+            "mean_score_percent": 76.25,
+            "mean_total_duration_s": 3.127016,
+            "num_examples": 100
+          }
+        },
+        "query_aware_snapkv": {
+          "k1024": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.901143,
+            "mean_policy_duration_s": 0.591996,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.493139,
+            "num_examples": 100
+          },
+          "k128": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.877646,
+            "mean_policy_duration_s": 0.596117,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.473763,
+            "num_examples": 100
+          },
+          "k2048": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.918022,
+            "mean_policy_duration_s": 0.585173,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.503194,
+            "num_examples": 100
+          },
+          "k256": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.870771,
+            "mean_policy_duration_s": 0.595634,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.466405,
+            "num_examples": 100
+          },
+          "k512": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.892723,
+            "mean_policy_duration_s": 0.596048,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.488771,
+            "num_examples": 100
+          }
+        },
+        "snapkv": {
+          "k1024": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.901943,
+            "mean_policy_duration_s": 0.504357,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.4063,
+            "num_examples": 100
+          },
+          "k128": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.878143,
+            "mean_policy_duration_s": 0.510504,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.388647,
+            "num_examples": 100
+          },
+          "k2048": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.920245,
+            "mean_policy_duration_s": 0.49877,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.419015,
+            "num_examples": 100
+          },
+          "k256": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.86814,
+            "mean_policy_duration_s": 0.508596,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.376735,
+            "num_examples": 100
+          },
+          "k512": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.894567,
+            "mean_policy_duration_s": 0.507452,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.40202,
+            "num_examples": 100
+          }
+        },
+        "streaming_llm": {
+          "k1024": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.901147,
+            "mean_policy_duration_s": 0.49845,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.399597,
+            "num_examples": 100
+          },
+          "k128": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.876841,
+            "mean_policy_duration_s": 0.500984,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.377825,
+            "num_examples": 100
+          },
+          "k2048": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.918079,
+            "mean_policy_duration_s": 0.490748,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.408826,
+            "num_examples": 100
+          },
+          "k256": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.01,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.99
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.869937,
+            "mean_policy_duration_s": 0.501157,
+            "mean_recall": 0.99,
+            "mean_score_fraction": 0.2475,
+            "mean_score_percent": 24.75,
+            "mean_total_duration_s": 1.371094,
+            "num_examples": 100
+          },
+          "k512": {
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 1.0
+            },
+            "eviction_survival_rate": 0.25,
+            "full_recall_rate": 0.0,
+            "mean_generation_duration_s": 0.897801,
+            "mean_policy_duration_s": 0.501724,
+            "mean_recall": 1.0,
+            "mean_score_fraction": 0.25,
+            "mean_score_percent": 25.0,
+            "mean_total_duration_s": 1.399526,
+            "num_examples": 100
+          }
+        }
+      },
+      "num_samples_requested": 100,
+      "raw_record_count": 1600,
+      "schema_version": "phase3-benchmark-v1",
+      "task": "MQ-NIAH-4q",
+      "task_key": "mq_niah_4q"
+    },
+    "s_niah": {
+      "budget_order": [
+        "k128",
+        "k256",
+        "k512",
+        "k1024",
+        "k2048",
+        "FullKV"
+      ],
+      "context_length": 32768,
+      "generator_compat_version": "phase1-current-generator-noise-filler-2026-04-21",
+      "methods": {
+        "fullkv": {
+          "FullKV": {
+            "accuracy": 1.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 1.0,
+            "mean_generation_duration_s": 2.5142,
+            "mean_policy_duration_s": 0.001808,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 2.516007,
+            "num_examples": 100
+          }
+        },
+        "query_aware_snapkv": {
+          "k1024": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.472478,
+            "mean_policy_duration_s": 0.595082,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 1.06756,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.467799,
+            "mean_policy_duration_s": 0.60179,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 1.06959,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.482125,
+            "mean_policy_duration_s": 0.588137,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 1.070262,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.472153,
+            "mean_policy_duration_s": 0.600101,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 1.072254,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.469021,
+            "mean_policy_duration_s": 0.59739,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 1.066411,
+            "num_examples": 100
+          }
+        },
+        "snapkv": {
+          "k1024": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.471293,
+            "mean_policy_duration_s": 0.506671,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.977964,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.466875,
+            "mean_policy_duration_s": 0.508476,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.975351,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.486868,
+            "mean_policy_duration_s": 0.499781,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.986649,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.475644,
+            "mean_policy_duration_s": 0.514914,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.990557,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.46915,
+            "mean_policy_duration_s": 0.51099,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.98014,
+            "num_examples": 100
+          }
+        },
+        "streaming_llm": {
+          "k1024": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.470322,
+            "mean_policy_duration_s": 0.49976,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.970082,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.466388,
+            "mean_policy_duration_s": 0.50177,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.968159,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.481909,
+            "mean_policy_duration_s": 0.495011,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.97692,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.467987,
+            "mean_policy_duration_s": 0.501283,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.96927,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 0.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 1.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.0,
+            "mean_generation_duration_s": 0.47151,
+            "mean_policy_duration_s": 0.503241,
+            "mean_score_fraction": 0.0,
+            "mean_score_percent": 0.0,
+            "mean_total_duration_s": 0.974751,
+            "num_examples": 100
+          }
+        }
+      },
+      "num_samples_requested": 100,
+      "raw_record_count": 1600,
+      "schema_version": "phase3-benchmark-v1",
+      "task": "S-NIAH",
+      "task_key": "s_niah"
+    },
+    "vt_4hop": {
+      "budget_order": [
+        "k128",
+        "k256",
+        "k512",
+        "k1024",
+        "k2048",
+        "FullKV"
+      ],
+      "context_length": 32768,
+      "generator_compat_version": "phase1-current-generator-noise-filler-2026-04-21",
+      "methods": {
+        "fullkv": {
+          "FullKV": {
+            "accuracy": 1.0,
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 1.0,
+            "hop_survival": {
+              "hop_1": 1.0,
+              "hop_2": 1.0,
+              "hop_3": 1.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 2.748912,
+            "mean_policy_duration_s": 0.001814,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 2.750726,
+            "num_examples": 100
+          }
+        },
+        "query_aware_snapkv": {
+          "k1024": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.393792,
+            "mean_policy_duration_s": 0.639156,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 1.032948,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.382505,
+            "mean_policy_duration_s": 0.635331,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 1.017836,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.399745,
+            "mean_policy_duration_s": 0.630202,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 1.029948,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.383776,
+            "mean_policy_duration_s": 0.632491,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 1.016267,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.390897,
+            "mean_policy_duration_s": 0.63718,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 1.028077,
+            "num_examples": 100
+          }
+        },
+        "snapkv": {
+          "k1024": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.397143,
+            "mean_policy_duration_s": 0.566635,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.963778,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.392489,
+            "mean_policy_duration_s": 0.556435,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.948924,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.39866,
+            "mean_policy_duration_s": 0.556267,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.954927,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.396817,
+            "mean_policy_duration_s": 0.580792,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.977609,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.396748,
+            "mean_policy_duration_s": 0.575737,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.972485,
+            "num_examples": 100
+          }
+        },
+        "streaming_llm": {
+          "k1024": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.394209,
+            "mean_policy_duration_s": 0.525301,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.91951,
+            "num_examples": 100
+          },
+          "k128": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.383755,
+            "mean_policy_duration_s": 0.528196,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.911951,
+            "num_examples": 100
+          },
+          "k2048": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.398962,
+            "mean_policy_duration_s": 0.520808,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.91977,
+            "num_examples": 100
+          },
+          "k256": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.386071,
+            "mean_policy_duration_s": 0.528708,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.914779,
+            "num_examples": 100
+          },
+          "k512": {
+            "accuracy": 1.0,
+            "chain_break_hop_distribution": {
+              "hop_1": 1.0
+            },
+            "error_breakdown": {
+              "chain_break": 0.0,
+              "eviction_miss": 0.0,
+              "hallucination": 0.0,
+              "other": 0.0,
+              "partial_recall": 0.0
+            },
+            "eviction_survival_rate": 0.4,
+            "hop_survival": {
+              "hop_1": 0.0,
+              "hop_2": 0.0,
+              "hop_3": 0.0,
+              "hop_4": 1.0
+            },
+            "mean_generation_duration_s": 0.389767,
+            "mean_policy_duration_s": 0.527798,
+            "mean_score_fraction": 1.0,
+            "mean_score_percent": 100.0,
+            "mean_total_duration_s": 0.917565,
+            "num_examples": 100
+          }
+        }
+      },
+      "num_samples_requested": 100,
+      "raw_record_count": 1600,
+      "schema_version": "phase3-benchmark-v1",
+      "task": "VT-4hop",
+      "task_key": "vt_4hop"
+    }
+  },
+  "tasks": [
+    "vt_4hop",
+    "mq_niah_4q",
+    "s_niah"
+  ]
+}
