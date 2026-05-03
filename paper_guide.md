@@ -646,14 +646,15 @@ Reference pattern:
 
 IdleKV appendix rules:
 
-- Keep the appendix in the normal ICML two-column flow. Do not switch to
-  `\onecolumn` unless a venue instruction or unavoidable artifact requires it.
-- Use ordinary float placement (`[tbp]` or `[t]`) rather than pinned `[H]`
-  floats; `[H]` often creates large white gaps in a two-column paper.
-- Include one-column appendix plots at `\columnwidth`. Use `figure*` or
-  `table*` only when an object truly needs both columns, or when several
-  tail-end appendix diagnostics can be combined into one dense full-width panel
-  that avoids an empty-column final page.
+- Use the ICML example pattern already adopted in `paper/main.tex`: start the
+  appendix after a page break and switch to `\onecolumn` because the appendix is
+  figure-heavy and the two-column version created large flush-bottom gaps.
+- Use ordinary float placement (`[tbp]` or `[t]`) by default. Use pinned `[H]`
+  only for short appendix figures that would otherwise drift away from their
+  local explanation.
+- Include appendix plots at `\columnwidth` in the one-column appendix. Avoid
+  `figure*`/`table*` there because they add no width and can create extra
+  whitespace.
 - Avoid ending on a mostly blank page caused by a full-width float when a
   one-column figure, shorter caption, or an additional high-signal appendix
   plot can make the page denser without spacing hacks.
