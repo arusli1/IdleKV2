@@ -89,6 +89,8 @@ Last updated: 2026-05-03 20:33 UTC.
 - `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
   - `13 passed` after adding monitor ETA coverage and controlled-proxy
     readiness coverage
+- `.venv/bin/python -m pytest -q`
+  - `234 passed, 16 warnings, 304 subtests passed`
 - `.venv/bin/python -m pytest phases/phase6_repair/tests/test_runner.py phases/phase6_repair/tests/test_reporting.py -q`
   - `37 passed`
 - `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` from
