@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 from pathlib import Path
 
 from phases.phase14_critical_flaw_closure.scripts import audit_phase14_readiness as audit
@@ -8,6 +9,8 @@ from phases.phase14_critical_flaw_closure.scripts import evaluate_phase14_smokes
 from phases.phase14_critical_flaw_closure.scripts import evaluate_proxy_controlled_smoke as proxy_eval
 from phases.phase14_critical_flaw_closure.scripts.monitor_proxy_progress import (
     parse_proxy_log,
+    parse_run_metadata,
+    render_eta,
     render_summary,
 )
 
@@ -174,18 +177,19 @@ def test_controlled_proxy_evaluator_accepts_clean_controlled_proxy() -> None:
 
 
 def test_proxy_progress_monitor_summarizes_wrapped_log_events() -> None:
-    progress, summaries = parse_proxy_log(
-        "\n".join(
-            [
-                "[mq_niah_4q_split_14_to_23:ex001] A=1.000 B=0.000 "
-                "k=48:Bm=0.000/I=1.000/R=0.000/O=0.000/Or=1.000 "
-                "k=96:Bm=0.000/I=1.000/R=0.000/O=0.000/Or=1.000",
-                "[mq_niah_4q_split_24_to_13:ex001] A=1.000 B=0.500 "
-                "k=48:Bm=0.500/I=1.000/R=0.500/O=0.500/Or=1.000 "
-                "k=96:Bm=0.500/I=1.000/R=0.500/O=0.500/Or=1.000",
-            ]
-        )
+    text = "\n".join(
+        [
+            "[phase14-proxy-locked] start 2026-05-03 19:48:54 UTC",
+            "[phase14-proxy-locked] n=100 K=48 96 conditions=A/B/B_match/Random-K/Oldest-K/IdleKV/Oracle-K",
+            "[mq_niah_4q_split_14_to_23:ex001] A=1.000 B=0.000 "
+            "k=48:Bm=0.000/I=1.000/R=0.000/O=0.000/Or=1.000 "
+            "k=96:Bm=0.000/I=1.000/R=0.000/O=0.000/Or=1.000",
+            "[mq_niah_4q_split_24_to_13:ex001] A=1.000 B=0.500 "
+            "k=48:Bm=0.500/I=1.000/R=0.500/O=0.500/Or=1.000 "
+            "k=96:Bm=0.500/I=1.000/R=0.500/O=0.500/Or=1.000",
+        ]
     )
+    progress, summaries = parse_proxy_log(text)
 
     assert progress == {"mq_niah_4q": 1}
     assert summaries[("mq_niah_4q", 48)].count == 2
@@ -193,6 +197,17 @@ def test_proxy_progress_monitor_summarizes_wrapped_log_events() -> None:
     rendered = render_summary(progress, summaries)
     assert "K=96" in rendered
     assert "max_control_lift=0.000" in rendered
+    start, num_samples = parse_run_metadata(text)
+    assert num_samples == 100
+    assert start == datetime(2026, 5, 3, 19, 48, 54, tzinfo=timezone.utc)
+    eta = render_eta(
+        start=start,
+        num_samples=num_samples,
+        summaries=summaries,
+        now=datetime(2026, 5, 3, 19, 49, 54, tzinfo=timezone.utc),
+    )
+    assert "completed 2/700" in eta
+    assert "rough remaining" in eta
 
 
 def test_refresh_evaluator_classifies_refresh_boundary() -> None:

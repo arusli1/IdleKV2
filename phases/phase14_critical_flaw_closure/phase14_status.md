@@ -21,6 +21,8 @@ Last updated: 2026-05-03 20:33 UTC.
   `phases/phase14_critical_flaw_closure/scripts/monitor_proxy_progress.py`,
   which reports live controlled-proxy progress and partial per-$K$ means from
   the tmux log without touching the GPU run.
+- Extended the log monitor with a rough ETA based on completed example-split
+  rows and the configured 4Q/6Q split counts.
 - Added pre-specified locked-run wrappers for calibrated Llama and selector
   variants, used only after their smoke gates pass.
 - Patched the shared Phase 9 artifact summarizer to export
@@ -74,6 +76,9 @@ Last updated: 2026-05-03 20:33 UTC.
 - `.venv/bin/python -m py_compile phases/phase14_critical_flaw_closure/scripts/*.py phases/phase9_experiment_deepening/scripts/phase9_artifact_summary.py`
 - `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
   - `11 passed`
+- `.venv/bin/python -m py_compile phases/phase14_critical_flaw_closure/scripts/monitor_proxy_progress.py`
+- `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
+  - `11 passed` after adding monitor ETA coverage
 - `.venv/bin/python -m pytest phases/phase6_repair/tests/test_runner.py phases/phase6_repair/tests/test_reporting.py -q`
   - `37 passed`
 - `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` from
