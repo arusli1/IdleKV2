@@ -71,8 +71,8 @@ than the current evidence.
 
 **Risk.** The main quality frontier uses exact query projections, while the
 latency argument uses cheaper proxy scoring. A reviewer can accept exact
-scoring as mechanistic evidence, but deployment-facing language needs evidence
-that the scalable scorer keeps quality under the same controls.
+scoring as mechanistic evidence, but scalable-scorer language needs evidence
+that the cheaper scorer keeps quality under the same controls.
 
 **Current audit.**
 
@@ -293,7 +293,7 @@ it answers and identify which existing figure or paragraph it replaces.
 
 - it closes a critical flaw that Figure 2/3/4/runtime cannot close;
 - it gives non-saturated cross-model evidence;
-- it shows a deployable scorer preserving the main effect under controls;
+- it shows a scalable scorer preserving the main effect under controls;
 - it introduces a faithful named baseline that changes the method comparison.
 
 Otherwise it goes to the appendix or Phase 15+ notes.
