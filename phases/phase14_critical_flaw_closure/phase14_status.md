@@ -1,6 +1,6 @@
 # Phase 14 Status
 
-Last updated: 2026-05-03 20:09 UTC.
+Last updated: 2026-05-03 20:33 UTC.
 
 ## Implemented
 
@@ -81,6 +81,60 @@ Last updated: 2026-05-03 20:09 UTC.
   found no undefined citations or overfull boxes.
 - Rebuilt `paper/main.pdf` after the appendix caption trim; log scan found no
   undefined citations or overfull boxes.
+- Rebuilt `paper/main.pdf` after the latest outline-guided ramble/hole pass;
+  log scan again found no undefined citations or overfull boxes.
+- Incorporated two reviewer-agent critiques into `paper/main.tex`:
+  repair scoring and burst packing are now specified in Method; matched active
+  budget accounting now states which off-device bytes and latency costs are
+  unmatched but reported separately; 2Q is defined in Setup; StaleQ/WrongQ and
+  Refresh-buffered are defined before Results; the multi-turn diagnostic now
+  defines its recurrent recompress/repair protocol; and the appendix now states
+  greedy decoding, seed policy, bootstrap unit, and the core runtime stack.
+- Rebuilt `paper/main.pdf` after each paper edit. References start on page 7,
+  so the main body remains within the six-page limit; total PDF length is 13
+  pages with appendix.
+
+## Paper Economy Audit
+
+Most main-text detail is now earning its place because it answers a named
+reviewer question: matched-budget effect, cue specificity, repeated relevance
+shift, retention-rule sensitivity, robustness/mechanism, or latency capacity.
+The remaining over-detail risks are:
+
+- Repeated result narration: secondary diagnostics should stay in prose only
+  when they block a likely misread. The multi-turn paragraph now keeps the
+  stale-query audit because reviewers could otherwise attribute the result to
+  reused old queries, but it avoids walking through every condition.
+- Runtime prose: the latency paragraph should not read like a systems trace
+  result. The paper now calls Figure 5 a capacity envelope rather than a
+  measured tool-call trace and names the missing scheduler evidence.
+- Method exclusions: implementation limits should be concise in Method and
+  expanded only in Discussion. The latest edit shortened the distributed
+  systems exclusion list without hiding the assumption.
+
+The reviewer holes that remain material are:
+
+- Controlled proxy scoring: the locked run must decide whether the scalable
+  proxy path preserves quality under Random-K/Oldest-K/Gold-K controls.
+- Trace-scheduled evaluation: the paper cites web/coding-agent wait evidence,
+  but it still lacks a real wait-distribution scheduler experiment.
+- Broader generality: current Llama and retention-rule evidence are appendix
+  breadth checks, not enough for a broad model-family or named-policy claim.
+- Algorithmic headroom: Refresh-buffered and Gold-K show that IdleKV is a
+  useful promotion primitive, not the final selector.
+
+Reviewer-agent triage:
+
+- We accepted and fixed underdefined repair mechanics, active-budget
+  accounting, 2Q setup, Refresh-buffered definition, multi-turn recurrence, and
+  reproducibility details.
+- We kept the retention-rule sensitivity figure in the main paper for now
+  because it answers a distinct AdaptFM robustness question, but the text now
+  explicitly says it is sensitivity to protocol-matched retention rules, not
+  named H2O/StreamingLLM performance.
+- We did not promote a new Refresh-buffered frontier because the existing
+  Phase 14 smoke confirmed it is a method-boundary result rather than a clean
+  new main figure.
 
 ## Initial Readiness Audit
 
@@ -154,6 +208,8 @@ Purpose:
 - Settings: 4Q and 6Q, `K={48,64,80,96,128}`, `n=100`, proxy scorer,
   `A/B/B_match/Random-K/Oldest-K/IdleKV/Oracle-K`.
 - Progress at 2026-05-03 19:57 UTC: 4Q is active, around example `19/100`
+  across three splits; 6Q has not started.
+- Progress at 2026-05-03 20:33 UTC: 4Q is active, around example `56/100`
   across three splits; 6Q has not started.
 
 Promotion decision after completion:
