@@ -84,9 +84,12 @@ GPU cache even when the application-visible context is much larger.
 In batch-1, local-GPU, or dedicated-tenant agent workflows, decoding is
 interleaved with file reads, tests, retrieval, remote APIs, and other
 external actions that pause generation for milliseconds to seconds while
-the KV state remains useful; recent web-agent measurements find that
-environment interaction alone can account for up to 53.7\% of
-end-to-end agent latency~\citep{agent_efficiency}.
+the KV state remains useful.
+Recent measurements make this slack concrete: web-environment
+interaction can account for up to 53.7\% of web-agent latency, and
+OS-level execution that includes tool calls and container/agent
+initialization can account for 56--74\% of coding-agent task
+latency~\citep{agent_efficiency,agentcgroup}.
 Those pauses are usually treated as dead time, and cache compression is
 usually treated as a one-shot active-cache decision.
 We argue that the idle interval between turns exposes a different cache
@@ -544,10 +547,10 @@ At $K=5000$, p95 grows from $50.0$\,ms at 32K candidates to $1.20$\,s
 at 1M and $4.64$\,s at 4M; the 4M endpoint corresponds to about
 240\,GB of offloaded Qwen-shaped BF16 KV.
 These values sit within the seconds-scale regime reported for
-web-agent API and environment waits~\citep{agent_efficiency}, but they
-are capacity measurements: a real scheduler would need trace-level
-tool/environment waits, queue state, and overlap to decide when repair
-can run.
+web-agent API/environment waits and coding-agent OS/tool
+execution~\citep{agent_efficiency,agentcgroup}, but they are capacity
+measurements: a real scheduler would need trace-level tool/environment
+waits, queue state, and overlap to decide when repair can run.
 The stage-wise component split shows that candidate scanning dominates
 large stores, while top-$K$ selection and selected-KV copy/reinsertion
 are not the bottleneck.
@@ -650,7 +653,7 @@ by how efficiently they decode, but by how well they maintain KV state
 between turns.
 
 % -----------------------------------------------------------------------
-\begin{thebibliography}{28}
+\begin{thebibliography}{29}
 
 \bibitem[Abhyankar et~al.(2024)]{infercept}
 Abhyankar, R., He, Z., Srivatsa, V., Zhang, H., and Zhang, Y.
@@ -795,6 +798,12 @@ Zhang, Y., Yan, Y., Yang, N., and Yuan, D.
 \newblock AgentServe: Algorithm-system co-design for efficient agentic
   AI serving on a consumer-grade GPU.
 \newblock \emph{arXiv:2603.10342}, 2026.
+
+\bibitem[Zheng et~al.(2026)]{agentcgroup}
+Zheng, Y., Fan, J., Fu, Q., Yang, Y., Zhang, W., and Quinn, A.
+\newblock AgentCgroup: Understanding and controlling OS resources of AI
+  agents.
+\newblock \emph{arXiv:2602.09345}, 2026.
 
 \bibitem[Zhou et~al.(2024)]{webarena}
 Zhou, S., Xu, F. F., Zhu, H., Zhou, X., Lo, R., Sridhar, A.,

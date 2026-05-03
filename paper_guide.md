@@ -313,12 +313,14 @@ Never include:
 Runtime/idle-window framing:
 
 - Use peer-reviewed or archival agent-efficiency measurements when arguing
-  that paused agent workflows expose nontrivial wait time. The current main
-  citation is Bian et al., "What Limits Agentic Systems Efficiency?", which
+  that paused agent workflows expose nontrivial wait time. Current main
+  citations are Bian et al., "What Limits Agentic Systems Efficiency?", which
   decomposes web-agent latency into LLM API and environment components and
-  reports environment interaction as up to 53.7% of total latency.
-- Phrase this as web-agent API/environment wait evidence, not as a measured
-  distribution of all tool-call durations.
+  reports environment interaction as up to 53.7% of total latency, and Zheng
+  et al., "AgentCgroup", which reports OS-level execution including tool calls
+  and container/agent initialization as 56-74% of coding-agent task latency.
+- Phrase these as component-level web-agent and coding-agent latency evidence,
+  not as a measured distribution of all tool-call durations.
 - Treat the runtime plots as capacity envelopes unless an experiment is driven
   by real trace-level waits, queue state, and overlap with resumed generation.
 
