@@ -18,6 +18,9 @@ echo "[phase14-proxy-postprocess] evaluating ${CSV_PATH}"
 echo "[phase14-proxy-postprocess] running readiness audit"
 .venv/bin/python phases/phase14_critical_flaw_closure/scripts/audit_phase14_readiness.py
 
+echo "[phase14-proxy-postprocess] exporting controlled proxy CSV to paper/figures"
+cp "${CSV_PATH}" paper/figures/proxy_controlled_locked_n100.csv
+
 echo "[phase14-proxy-postprocess] rendering paper figures"
 .venv/bin/python paper/scripts/render_paper_figures.py
 
