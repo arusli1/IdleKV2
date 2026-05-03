@@ -133,6 +133,7 @@ def audit_proxy_pair(
         "exact_lift": round(exact_lift, 6),
         "proxy_lift": round(proxy_lift, 6),
         "retained_gain": round(retained_gain, 6),
+        "retention_gate": round(retention_gate, 6),
         "absolute_loss": round(absolute_loss, 6),
         "p50_total_speedup": round(total_speedup, 3),
         "p50_score_speedup": round(score_speedup, 3),
@@ -257,7 +258,7 @@ def audit_all(repo_root: Path = REPO_ROOT) -> dict[str, object]:
             proxy_csv=controlled_proxy if use_controlled_proxy else figures / "phase9_proxy_6q_full_n100.csv",
             latency_proxy_csv=figures / "phase9_proxy_6q_full_n100.csv",
             task="mq_niah_6q_clean_suite" if use_controlled_proxy else None,
-            retention_gate=0.85,
+            retention_gate=0.80,
         ),
     ]
     status = {

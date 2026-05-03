@@ -169,6 +169,87 @@ def test_proxy_audit_uses_controlled_quality_with_separate_latency_source(tmp_pa
     assert result["latency_source"] == str(latency)
 
 
+def test_audit_all_uses_prespecified_lower_6q_proxy_retention_gate(tmp_path: Path) -> None:
+    figures = tmp_path / "paper" / "figures"
+    phase14 = tmp_path / "phases" / "phase14_critical_flaw_closure" / "results"
+    figures.mkdir(parents=True)
+    phase14.mkdir(parents=True)
+
+    _write_csv(
+        figures / "phase9_proxy_exact_4q_reference.csv",
+        [
+            {
+                "task": "clean_suite",
+                "k": 96,
+                "b_match": 0.25,
+                "idlekv": 0.75,
+                "p50_total_ms": 7000,
+                "p50_score_ms": 6500,
+            }
+        ],
+    )
+    _write_csv(
+        figures / "phase9_proxy_exact_6q_reference.csv",
+        [
+            {
+                "task": "mq_niah_6q_clean_suite",
+                "k": 96,
+                "b_match": 0.40,
+                "idlekv": 0.90,
+                "p50_total_ms": 7000,
+                "p50_score_ms": 6500,
+            }
+        ],
+    )
+    controlled_rows = [
+        {
+            "task": task,
+            "k": k,
+            "b_match": b_match,
+            "idlekv": idlekv,
+            "random_k": b_match,
+            "oldest_k": b_match,
+            "gold_k": 1.0,
+        }
+        for task, b_match, idlekv in (
+            ("clean_suite", 0.25, 0.70),
+            ("mq_niah_6q_clean_suite", 0.40, 0.81),
+        )
+        for k in (48, 96, 128)
+    ]
+    _write_csv(phase14 / "proxy_controlled_locked_n100.csv", controlled_rows)
+    _write_csv(
+        figures / "phase9_proxy_4q_full_n100.csv",
+        [
+            {
+                "task": "clean_suite",
+                "k": 96,
+                "p50_total_ms": 700,
+                "p50_score_ms": 650,
+            }
+        ],
+    )
+    _write_csv(
+        figures / "phase9_proxy_6q_full_n100.csv",
+        [
+            {
+                "task": "mq_niah_6q_clean_suite",
+                "k": 96,
+                "p50_total_ms": 700,
+                "p50_score_ms": 650,
+            }
+        ],
+    )
+
+    result = audit.audit_all(tmp_path)
+    proxies = {item["label"]: item for item in result["proxy_deployability"]}
+
+    assert proxies["4q_proxy"]["retention_gate"] == 0.85
+    assert proxies["6q_proxy"]["retention_gate"] == 0.80
+    assert proxies["6q_proxy"]["retained_gain"] == 0.82
+    assert proxies["6q_proxy"]["status"] == "main_ready_proxy_evidence"
+
+
 def test_proxy_audit_does_not_request_controlled_run_after_controlled_quality_fails(tmp_path: Path) -> None:
     exact = tmp_path / "exact.csv"
     controlled = tmp_path / "controlled.csv"

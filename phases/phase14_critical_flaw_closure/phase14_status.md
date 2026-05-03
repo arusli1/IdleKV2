@@ -86,6 +86,9 @@ Last updated: 2026-05-03 20:50 UTC.
   candidate scan is linear in offloaded candidate rows for fixed query/model
   shape, while promotion is independent of candidate-store size but depends on
   restored rows and the reinsertion path.
+- Fixed the readiness audit to match the pre-registered proxy retained-gain
+  gates: `0.85` for 4Q and `0.80` for 6Q. The audit output now records which
+  retention gate was applied, and the behavior has a regression test.
 - Accepted the latest AdaptFM/KV-runtime reviewer audits: proxy wording now
   says preliminary fixed-`K` until the controlled run finishes, runtime
   evidence is framed as a capacity envelope consistent with multi-second
@@ -149,6 +152,9 @@ Last updated: 2026-05-03 20:50 UTC.
   paper-language tests passed.
 - `.venv/bin/python -m pytest -q`
   - `234 passed, 16 warnings, 304 subtests passed` at 2026-05-03 20:49 UTC.
+- `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
+  - `14 passed` after aligning the 6Q proxy retained-gain gate with the
+    written Phase 14 plan.
 
 ## Paper Economy Audit
 
