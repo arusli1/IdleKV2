@@ -34,22 +34,29 @@ Use one consistent runtime envelope:
 - Hardware: same evaluation GPU.
 - Model-shaped KV: Qwen-shaped BF16 KV by default.
 - Active cache: 32K rows for the main repair-envelope figure.
-- Candidate store: 32K, 64K, 128K, 256K, 512K, and 1M offloaded candidate
-  rows. These powers-of-two checkpoints align with context-length reporting
-  conventions and make log-scale latency-envelope plots easier to read.
+- Candidate store: 32K, 64K, 128K, 256K, 512K, 1M, 2M, and 4M offloaded
+  candidate rows. These powers-of-two checkpoints align with context-length
+  reporting conventions and test beyond the common million-token headline
+  scale without changing the runtime protocol.
+  The main paper should stop at 4M: it reaches the representative 5s
+  checkpoint while keeping the one-column heatmap readable. An 8M row is
+  appendix-only stress evidence unless it answers a new reviewer-facing
+  question.
 - Query length: 64 rows for the main run. Query-length sensitivity is useful
   appendix material only after the main envelope is stable.
-- Restore budgets: `K in {96, 512, 1024, 5000}`. The main figure reports
-  `K=96` and `K=5000`; the middle budgets check monotonicity and support
-  appendix diagnostics.
+- Restore budgets: `K in {96, 512, 1024, 5000}`. The main figure shows the
+  full grid; the middle budgets check monotonicity and show that restored-row
+  budget is not the dominant latency axis.
 - Measurement: p50/p95/p99 over robust trials after warmup.
 - Source pool: enough distinct pinned host chunks to cover every measured
   candidate row for one KV layer (`host_pool_coverage = 1.0`).
-- Runtime reported for the main figure: integrated p95 from one measured
-  synthetic repair trial: chunked candidate scoring, top-K selection,
-  selected-KV host-to-GPU movement, and reinsertion.
+- Runtime reported for the main figure: a conservative component-summed p95
+  from separate measured stages: chunked candidate scoring, top-K selection,
+  selected-KV host-to-GPU movement, and reinsertion. Do not describe this as a
+  joined end-to-end latency distribution unless a joined run produced the row.
 
-The full 1M offloaded KV state is about 57 GB for this shape. The scan
+The full 1M offloaded KV state is about 57 GB for this shape; 4M rows are about
+240 GB. The scan
 materializes a full one-layer key pool and streams it once per layer; it does
 not materialize the full key+value store on GPU.
 
@@ -57,18 +64,17 @@ not materialize the full key+value store on GPU.
 
 Main text:
 
-- One runtime-envelope plot: p95 repair time versus offloaded candidate rows,
-  with `K=96` and `K=5000` lines and horizontal representative idle-budget
-  checkpoints.
+- One runtime-capacity grid: restore budget `K` by offloaded candidate rows,
+  with annotated component-summed p95 latency and representative idle-budget
+  colorbar checkpoints. Add a compact component-share strip below it.
 - Prefer prose anchors over a main-text table. If exact values are needed,
   move a compact p50/p95/p99 table to the appendix and do not include a
   categorical "idle" column in the main text.
 
 Appendix:
 
-- Full integrated `K` grid for 96/500/1000/2000/5000.
-- Query-length sensitivity for 16/64/128 query rows, if the main runtime
-  figure leaves ambiguity about query-length scaling.
+- Query-length sensitivity for 16/64/128 query rows, ideally as an appendix
+  heatmap or compact table, because the main grid fixes query length at 64.
 - Move/inject-only active-cache scaling for 32K/100K/500K active rows.
 - Exact/proxy scorer diagnostics with quality numbers.
 

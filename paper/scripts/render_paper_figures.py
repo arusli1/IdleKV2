@@ -21,7 +21,7 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
@@ -56,6 +56,10 @@ PALETTE = {
 GAIN_CMAP = LinearSegmentedColormap.from_list(
     "idlekv_gain",
     ["#F7F7F7", "#D8EFF0", "#7FCDBB", "#2C7FB8", "#08306B"],
+)
+LATENCY_CMAP = LinearSegmentedColormap.from_list(
+    "idlekv_latency",
+    ["#F7FBFF", "#DEEBF7", "#9ECAE1", "#3182BD", "#08519C"],
 )
 
 
@@ -1107,9 +1111,9 @@ def render_runtime_capacity_curve() -> bool:
     fig.subplots_adjust(left=0.15, right=0.99, top=0.94, bottom=0.31, wspace=0.36)
 
     active_styles = {
-        8192: {"label": "8k active", "color": "#56B4E9", "marker": "o"},
-        32768: {"label": "32k active", "color": PALETTE["idlekv"], "marker": "s"},
-        100000: {"label": "100k active", "color": PALETTE["proxy"], "marker": "^"},
+        8192: {"label": "8K active", "color": "#56B4E9", "marker": "o"},
+        32768: {"label": "32K active", "color": PALETTE["idlekv"], "marker": "s"},
+        100000: {"label": "100K active", "color": PALETTE["proxy"], "marker": "^"},
     }
     ax = axes[0]
     for active_tokens, style in active_styles.items():
@@ -1242,6 +1246,101 @@ def _runtime_e2e_repair_frame(
     return pd.DataFrame.from_records(records)
 
 
+def _runtime_component_shares(
+    select_df: pd.DataFrame,
+    move_df: pd.DataFrame,
+    *,
+    active_tokens: int = 32768,
+    query_len: int = 64,
+    k_value: int = 5000,
+) -> pd.DataFrame:
+    """Return p95 component shares for the decomposed synthetic repair path."""
+    required_select = {"candidate_tokens", "k", "query_len", "p95_scan_ms", "p95_topk_ms"}
+    required_move = {"active_tokens", "k", "p95_transfer_ms", "p95_inject_ms"}
+    if not required_select.issubset(select_df.columns):
+        missing = sorted(required_select.difference(select_df.columns))
+        raise ValueError(f"selection CSV missing columns: {missing}")
+    if not required_move.issubset(move_df.columns):
+        missing = sorted(required_move.difference(move_df.columns))
+        raise ValueError(f"move CSV missing columns: {missing}")
+    select_subset = select_df[
+        (select_df["query_len"].astype(int) == int(query_len))
+        & (select_df["k"].astype(int) == int(k_value))
+    ].copy()
+    move_subset = move_df[
+        (move_df["active_tokens"].astype(int) == int(active_tokens))
+        & (move_df["k"].astype(int) == int(k_value))
+    ]
+    if select_subset.empty or move_subset.empty:
+        return pd.DataFrame()
+    move_row = move_subset.iloc[0]
+    copy_insert_ms = float(move_row["p95_transfer_ms"]) + float(move_row["p95_inject_ms"])
+    records: list[dict[str, float | int]] = []
+    for row in select_subset.sort_values("candidate_tokens").itertuples(index=False):
+        scan_ms = float(getattr(row, "p95_scan_ms"))
+        topk_ms = float(getattr(row, "p95_topk_ms"))
+        total_ms = scan_ms + topk_ms + copy_insert_ms
+        if total_ms <= 0:
+            continue
+        records.append(
+            {
+                "candidate_tokens": int(getattr(row, "candidate_tokens")),
+                "scan_share": scan_ms / total_ms,
+                "topk_share": topk_ms / total_ms,
+                "copy_insert_share": copy_insert_ms / total_ms,
+                "component_total_ms": total_ms,
+            }
+        )
+    return pd.DataFrame.from_records(records)
+
+
+def _runtime_repair_grid(
+    select_df: pd.DataFrame,
+    move_df: pd.DataFrame,
+    *,
+    active_tokens: int = 32768,
+    query_len: int = 64,
+    percentile_field: str = "p95_total_ms",
+) -> tuple[list[int], list[int], np.ndarray]:
+    """Return a K-by-candidate grid of component-summed repair latency."""
+    if "query_len" not in select_df.columns:
+        raise ValueError("selection CSV missing query_len column")
+    subset = select_df[select_df["query_len"].astype(int) == int(query_len)].copy()
+    repair = _runtime_select_with_move(
+        subset,
+        move_df,
+        active_tokens=active_tokens,
+        percentile_field=percentile_field,
+    )
+    if repair.empty:
+        return [], [], np.empty((0, 0), dtype=float)
+    ks = sorted(int(value) for value in repair["k"].dropna().unique())
+    candidates = sorted(int(value) for value in repair["candidate_tokens"].dropna().unique())
+    value_by_key = {
+        (int(row.k), int(row.candidate_tokens)): float(row.repair_s)
+        for row in repair.itertuples(index=False)
+    }
+    values = np.array(
+        [[value_by_key.get((k_value, candidate_tokens), np.nan) for candidate_tokens in candidates] for k_value in ks],
+        dtype=float,
+    )
+    return ks, candidates, values
+
+
+def _format_runtime_cell(seconds: float) -> str:
+    if not np.isfinite(seconds):
+        return ""
+    if seconds < 1.0:
+        return f"{seconds * 1000:.0f}ms"
+    return f"{seconds:.2f}s"
+
+
+def _format_candidate_rows(value: int) -> str:
+    if int(value) >= 1_048_576 and int(value) % 1_048_576 == 0:
+        return f"{int(value) // 1_048_576}M"
+    return f"{int(value) // 1024}K"
+
+
 def _max_measured_candidates_by_idle(
     repair_df: pd.DataFrame,
     *,
@@ -1330,17 +1429,25 @@ def render_runtime_repair_scaling() -> bool:
         return False
 
     repair_df = pd.DataFrame()
+    component_df = pd.DataFrame()
+    select_all = pd.DataFrame()
     if has_decomposed:
-        select_df = load_numeric_csv(select_path)
+        select_all = load_numeric_csv(select_path)
         move_df = load_numeric_csv(move_path)
-        if "query_len" in select_df.columns:
-            select_df = select_df[select_df["query_len"].astype(int) == 64].copy()
-        if "host_pool_coverage" in select_df.columns and float(select_df["host_pool_coverage"].min()) < 0.999:
+        if "host_pool_coverage" in select_all.columns and float(select_all["host_pool_coverage"].min()) < 0.999:
             return False
+        select_df = select_all[select_all["query_len"].astype(int) == 64].copy() if "query_len" in select_all.columns else select_all
         move_32k = move_df[move_df["active_tokens"].astype(int) == 32768]
         if select_df.empty or move_32k.empty:
             return False
         repair_df = _runtime_select_with_move(select_df, move_df, active_tokens=32768, percentile_field="p95_total_ms")
+        component_df = _runtime_component_shares(
+            select_all,
+            move_df,
+            active_tokens=32768,
+            query_len=64,
+            k_value=5000,
+        )
     else:
         e2e_df = load_numeric_csv(e2e_path)
         if "host_pool_coverage" in e2e_df.columns and float(e2e_df["host_pool_coverage"].min()) < 0.999:
@@ -1354,64 +1461,156 @@ def render_runtime_repair_scaling() -> bool:
     if repair_df.empty:
         return False
 
-    fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.84), constrained_layout=False)
-    fig.subplots_adjust(left=0.13, right=0.985, top=0.93, bottom=0.275)
-
-    styles = {
-        96: {"label": "$K=96$", "color": PALETTE["idlekv"], "marker": "o"},
-        5000: {"label": "$K=5000$", "color": PALETTE["proxy"], "marker": "s"},
-    }
-    for k_value, style in styles.items():
-        selected = repair_df[repair_df["k"].astype(int) == int(k_value)].sort_values("candidate_tokens")
-        if selected.empty:
-            continue
-        ax.plot(
-            selected["candidate_tokens"].astype(float),
-            selected["repair_s"].astype(float),
-            label=str(style["label"]),
-            color=str(style["color"]),
-            marker=str(style["marker"]),
-            linewidth=1.35,
-            markersize=3.2,
+    if has_decomposed and not component_df.empty and "query_len" in select_all.columns:
+        ks, candidates, latency_grid = _runtime_repair_grid(
+            select_all,
+            move_df,
+            active_tokens=32768,
+            query_len=64,
+            percentile_field="p95_total_ms",
         )
+        if not ks or not candidates:
+            return False
+        fig, axes_raw = plt.subplots(2, 1, figsize=(COLUMN_WIDTH_IN, 2.78), constrained_layout=False)
+        axes = np.atleast_1d(axes_raw)
+        fig.subplots_adjust(left=0.16, right=0.90, top=0.965, bottom=0.13, hspace=0.45)
 
-    budget_lines = [
-        (0.1, "#BDBDBD", "0.1s"),
-        (0.5, PALETTE["wrong"], "0.5s"),
-        (1.0, PALETTE["matched"], "1s"),
-        (2.0, PALETTE["grid"], "2s"),
-    ]
-    for y_value, color, label in budget_lines:
-        ax.axhline(y_value, color=color, linestyle=(0, (2, 1.5)), linewidth=0.68)
-        ax.text(
-            1_170_000,
-            y_value * 1.035,
-            label,
-            ha="right",
-            va="bottom",
-            fontsize=5.2,
-            color=color,
+        ax = axes[0]
+        norm = LogNorm(vmin=0.04, vmax=5.0)
+        im = ax.imshow(latency_grid, aspect="auto", cmap=LATENCY_CMAP, norm=norm)
+        candidate_labels = [_format_candidate_rows(value) for value in candidates]
+        ax.set_xticks(np.arange(len(candidates)), candidate_labels)
+        ax.set_yticks(np.arange(len(ks)), [str(value) for value in ks])
+        ax.set_ylabel("restore $K$", labelpad=1.0)
+        ax.tick_params(length=0, pad=1.3)
+        ax.set_xticks(np.arange(-0.5, len(candidates), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(ks), 1), minor=True)
+        ax.grid(which="minor", color="white", linewidth=0.85)
+        ax.tick_params(which="minor", bottom=False, left=False)
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.55)
+            spine.set_color("#666666")
+        cell_fontsize = 4.8 if len(candidates) >= 8 else 5.25
+        for row_idx in range(latency_grid.shape[0]):
+            for col_idx in range(latency_grid.shape[1]):
+                value = float(latency_grid[row_idx, col_idx])
+                rgba = LATENCY_CMAP(norm(value))
+                luminance = 0.2126 * rgba[0] + 0.7152 * rgba[1] + 0.0722 * rgba[2]
+                ax.text(
+                    col_idx,
+                    row_idx,
+                    _format_runtime_cell(value),
+                    ha="center",
+                    va="center",
+                    fontsize=cell_fontsize,
+                    color="white" if luminance < 0.50 else PALETTE["text"],
+                )
+        cbar = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.025)
+        cbar.set_ticks([0.05, 0.1, 0.5, 1.0, 2.0, 5.0])
+        cbar.ax.set_yticklabels(["50ms", "0.1s", "0.5s", "1s", "2s", "5s"])
+        cbar.outline.set_linewidth(0.45)
+        cbar.ax.tick_params(width=0.45, length=2.0, pad=1.0, labelsize=5.6)
+        cbar.set_label("p95 repair", labelpad=1.2, fontsize=6.1)
+
+        ax2 = axes[1]
+        component_df = component_df.sort_values("candidate_tokens")
+        x_values = np.arange(len(component_df))
+        labels = [_format_candidate_rows(int(value)) for value in component_df["candidate_tokens"]]
+        scan = component_df["scan_share"].to_numpy(dtype=float)
+        topk = component_df["topk_share"].to_numpy(dtype=float)
+        copy_insert = component_df["copy_insert_share"].to_numpy(dtype=float)
+        ax2.bar(x_values, scan, width=0.72, color=PALETTE["idlekv"], label="scan")
+        ax2.bar(
+            x_values,
+            topk,
+            bottom=scan,
+            width=0.72,
+            color=PALETTE["gold"],
+            edgecolor="#6A5700",
+            linewidth=0.25,
+            label="top-$K$",
         )
-
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlim(28_000, 1_250_000)
-    ax.set_ylim(0.025, 2.65)
-    ax.set_xticks([32_768, 65_536, 131_072, 262_144, 524_288, 1_048_576])
-    ax.set_xticklabels(["32k", "64k", "128k", "256k", "512k", "1M"])
-    ax.xaxis.set_minor_locator(mpl.ticker.NullLocator())
-    ax.set_yticks([0.05, 0.1, 0.5, 1.0, 2.0], ["0.05", "0.1", "0.5", "1", "2"])
-    ax.yaxis.set_minor_locator(mpl.ticker.NullLocator())
-    _format_axes(ax, x_label="offloaded candidate rows", y_label="p95 repair (s)")
-    ax.legend(
-        loc="lower right",
-        frameon=False,
-        ncol=1,
-        handlelength=1.0,
-        borderaxespad=0.1,
-        handletextpad=0.25,
-        fontsize=5.9,
-    )
+        ax2.bar(
+            x_values,
+            copy_insert,
+            bottom=scan + topk,
+            width=0.72,
+            color=PALETTE["random"],
+            label="copy+insert",
+        )
+        ax2.set_ylim(0.0, 1.0)
+        ax2.set_yticks([0.0, 0.5, 1.0], ["0", "50", "100"])
+        ax2.set_xticks(x_values, labels)
+        _format_axes(ax2, x_label="offloaded candidate rows", y_label="p95 share (%)")
+        ax2.grid(axis="y", color=PALETTE["grid"], linewidth=0.42, alpha=0.82)
+        ax2.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.51, 1.18),
+            ncol=3,
+            frameon=False,
+            handlelength=1.0,
+            handletextpad=0.28,
+            columnspacing=0.7,
+            fontsize=5.7,
+        )
+        ax.text(0.0, 1.04, "(a)", transform=ax.transAxes, ha="left", va="bottom", fontsize=5.9, fontweight="bold")
+        ax2.text(0.0, 1.03, "(b)", transform=ax2.transAxes, ha="left", va="bottom", fontsize=5.9, fontweight="bold")
+    else:
+        fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.84), constrained_layout=False)
+        fig.subplots_adjust(left=0.13, right=0.985, top=0.93, bottom=0.275)
+        styles = {
+            96: {"label": "$K=96$", "color": PALETTE["idlekv"], "marker": "o"},
+            5000: {"label": "$K=5000$", "color": PALETTE["proxy"], "marker": "s"},
+        }
+        for k_value, style in styles.items():
+            selected = repair_df[repair_df["k"].astype(int) == int(k_value)].sort_values("candidate_tokens")
+            if selected.empty:
+                continue
+            ax.plot(
+                selected["candidate_tokens"].astype(float),
+                selected["repair_s"].astype(float),
+                label=str(style["label"]),
+                color=str(style["color"]),
+                marker=str(style["marker"]),
+                linewidth=1.35,
+                markersize=3.2,
+            )
+        budget_lines = [
+            (0.1, "#BDBDBD", "0.1s"),
+            (0.5, PALETTE["wrong"], "0.5s"),
+            (1.0, PALETTE["matched"], "1s"),
+            (2.0, PALETTE["grid"], "2s"),
+        ]
+        for y_value, color, label in budget_lines:
+            ax.axhline(y_value, color=color, linestyle=(0, (2, 1.5)), linewidth=0.68)
+            ax.text(
+                1_170_000,
+                y_value * 1.035,
+                label,
+                ha="right",
+                va="bottom",
+                fontsize=5.2,
+                color=color,
+            )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlim(28_000, 1_250_000)
+        ax.set_ylim(0.025, 2.65)
+        ax.set_xticks([32_768, 65_536, 131_072, 262_144, 524_288, 1_048_576])
+        ax.set_xticklabels(["32K", "64K", "128K", "256K", "512K", "1M"])
+        ax.xaxis.set_minor_locator(mpl.ticker.NullLocator())
+        ax.set_yticks([0.05, 0.1, 0.5, 1.0, 2.0], ["0.05", "0.1", "0.5", "1", "2"])
+        ax.yaxis.set_minor_locator(mpl.ticker.NullLocator())
+        _format_axes(ax, x_label="offloaded candidate rows", y_label="p95 repair (s)")
+        ax.legend(
+            loc="lower right",
+            frameon=False,
+            ncol=1,
+            handlelength=1.0,
+            borderaxespad=0.1,
+            handletextpad=0.25,
+            fontsize=5.9,
+        )
 
     save_figure(fig, "runtime_repair_scaling")
     return True

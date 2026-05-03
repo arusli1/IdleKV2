@@ -76,6 +76,80 @@ def test_runtime_e2e_helper_uses_integrated_total() -> None:
     assert combined["repair_s"].tolist() == [0.055, 1.18]
 
 
+def test_runtime_component_shares_decompose_p95_path() -> None:
+    select = pd.DataFrame(
+        [
+            {
+                "candidate_tokens": 32_768,
+                "k": 5000,
+                "query_len": 64,
+                "p95_scan_ms": 75.0,
+                "p95_topk_ms": 5.0,
+            },
+            {
+                "candidate_tokens": 65_536,
+                "k": 5000,
+                "query_len": 128,
+                "p95_scan_ms": 150.0,
+                "p95_topk_ms": 5.0,
+            },
+        ]
+    )
+    move = pd.DataFrame(
+        [
+            {
+                "active_tokens": 32768,
+                "k": 5000,
+                "p95_transfer_ms": 10.0,
+                "p95_inject_ms": 10.0,
+            },
+        ]
+    )
+
+    shares = renderer._runtime_component_shares(select, move, query_len=64, k_value=5000)
+
+    assert shares["candidate_tokens"].tolist() == [32_768]
+    np.testing.assert_allclose(
+        shares[["scan_share", "topk_share", "copy_insert_share"]].iloc[0].to_numpy(dtype=float),
+        [0.75, 0.05, 0.20],
+    )
+
+
+def test_runtime_labels_use_compact_paper_units() -> None:
+    assert renderer._format_candidate_rows(32_768) == "32K"
+    assert renderer._format_candidate_rows(1_048_576) == "1M"
+    assert renderer._format_candidate_rows(4_194_304) == "4M"
+    assert renderer._format_runtime_cell(0.0889) == "89ms"
+    assert renderer._format_runtime_cell(1.204) == "1.20s"
+
+
+def test_runtime_repair_grid_orders_restore_budget_and_candidates() -> None:
+    select = pd.DataFrame(
+        [
+            {"candidate_tokens": 65_536, "k": 512, "query_len": 64, "p95_total_ms": 80.0},
+            {"candidate_tokens": 32_768, "k": 512, "query_len": 64, "p95_total_ms": 40.0},
+            {"candidate_tokens": 32_768, "k": 96, "query_len": 64, "p95_total_ms": 35.0},
+            {"candidate_tokens": 65_536, "k": 96, "query_len": 128, "p95_total_ms": 100.0},
+        ]
+    )
+    move = pd.DataFrame(
+        [
+            {"active_tokens": 32768, "k": 96, "p95_total_ms": 5.0},
+            {"active_tokens": 32768, "k": 512, "p95_total_ms": 7.0},
+        ]
+    )
+
+    ks, candidates, values = renderer._runtime_repair_grid(select, move, query_len=64)
+
+    assert ks == [96, 512]
+    assert candidates == [32_768, 65_536]
+    np.testing.assert_allclose(
+        values,
+        [[40.0 / 1000.0, np.nan], [47.0 / 1000.0, 87.0 / 1000.0]],
+        equal_nan=True,
+    )
+
+
 def test_policy_breadth_renderer_requires_streamingllm_full_grid(tmp_path, monkeypatch) -> None:
     figure_dir = tmp_path / "figures"
     phase11_dir = tmp_path / "phase11"

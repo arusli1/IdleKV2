@@ -543,32 +543,43 @@ $0.83$\,s and $0.71$\,s while remaining above $\bmatch$ in paired
 $n{=}100$ probes.
 The load-bearing systems question is whether a scalable selector and
 state movement can fit into idle windows.
-Figure~\ref{fig:runtime-envelope} therefore reports a single latency
-envelope: a chunked GPU selector streams Qwen-shaped BF16 key rows from
+Figure~\ref{fig:runtime-envelope} therefore reports a systems-capacity
+grid: a chunked GPU selector streams Qwen-shaped BF16 key rows from
 pinned host memory with full source-pool coverage, scores a length-64
-query, selects $K$ rows, and adds the measured 32K-active
-move-and-inject latency for the same $K$.
-At the conservative $K=5000$ stress budget, p95 repair time is
+query, selects $K$ rows, and combines that selector p95 with the
+measured 32K-active move-and-inject p95 for the same $K$.
+This is a conservative component-summed service-time estimate rather
+than a joined end-to-end latency distribution.
+The full $K\in\{96,512,1024,5000\}$ sweep changes the length-64 p95
+curve by at most $6.1$\,ms, so candidate-store size, not restored-row
+budget, is the dominant scaling axis.
+At $K=5000$, p95 repair time for the length-64 query is
 $50.0$\,ms for 32K offloaded candidates, $88.9$\,ms for 64K,
 $161.6$\,ms for 128K, $308.9$\,ms for 256K, $601.0$\,ms for 512K,
-and $1.20$\,s for 1M.
+$1.20$\,s for 1M, $2.38$\,s for 2M, and $4.64$\,s for 4M.
+The 4M endpoint corresponds to about 240\,GB of offloaded
+Qwen-shaped BF16 KV.
 Under a 10\% slack convention, the corresponding continuous idle-budget
-requirement is p95$/0.9$; the horizontal guides in the figure are only
-representative checkpoints, not an empirical tool-call distribution.
+requirement is p95$/0.9$; the colorbar ticks are only representative
+checkpoints, not an empirical tool-call distribution.
+The stage-wise component split shows that candidate scanning dominates
+at large stores, while top-$K$ selection and selected-KV
+copy/reinsertion are not the bottleneck.
 The probe excludes generation and is not the exact scorer used in the
-quality curves, but it shows that the mechanical repair path is not the
-dominant bottleneck at the tested scales.
+quality curves.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/runtime_repair_scaling.pdf}
-  \caption{Measured repair-latency envelope on the evaluation GPU.
-  Lines show p95 service time over 80 trials after five warmups with
-  32K active rows, query length 64, pinned host memory, full
-  source-pool coverage, and Qwen-shaped BF16 KV. Latency includes
-  chunked candidate-key scoring, top-$K$ selection, selected-KV
-  host-to-device transfer, and reinsertion; it excludes generation and
-  the research exact answer scorer. Dashed lines are representative
-  continuous idle-budget checkpoints.}
+  \caption{Runtime-capacity probe on the evaluation GPU.
+  (a) Component-summed p95 service time at query length 64 over 80
+  trials after five warmups; cells add chunked candidate-key scoring,
+  top-$K$ selection, selected-KV host-to-device transfer, and
+  reinsertion. (b) Share of the stage-wise p95 estimate for $K=5000$.
+  All rows use 32K
+  active rows, pinned host memory, full source-pool coverage, and
+  Qwen-shaped BF16 KV. The probe excludes generation and the research
+  exact answer scorer; colorbar ticks are representative continuous
+  idle-budget checkpoints.}
   \label{fig:runtime-envelope}
 \end{figure}
 
@@ -608,9 +619,14 @@ Existing tiered-cache systems motivate a hierarchy with hot active GPU
 KV, warm off-device KV that can be promoted during idle gaps, and colder
 compressed, summarized, or recomputable state.
 \idlekv{} provides evidence for turn-conditioned promotion from the
-warm tier, but it does not solve the next eviction problem: deciding
-which off-device KV should remain searchable when host memory or remote
-storage is also under pressure.
+warm tier.
+This is a hardware-facing implication rather than a hardware result: the
+measurements motivate tiered-KV interfaces that expose scoring,
+promotion, and demotion, but they do not establish area, energy, or
+bandwidth claims for any SRAM/eDRAM/DRAM design.
+Nor does \idlekv{} solve the next eviction problem: deciding which
+off-device KV should remain searchable when host memory or remote storage
+is also under pressure.
 Future benchmarks should therefore vary the number, timing, and conflict
 structure of new-turn constraints: the 2Q and 8Q breadth checks suggest
 that easy regimes can saturate while stricter multi-query turns expose
@@ -945,7 +961,7 @@ duplicated as wide tables.
   0.71\,s, respectively. Appendix
   Figure~\ref{fig:app-runtime-capacity} gives the larger synthetic
   move-and-inject capacity grid, while Figure~\ref{fig:runtime-envelope}
-  reports the main candidate-scoring latency envelope.}
+  reports the main runtime-capacity grid.}
   \label{fig:app-transfer-runtime}
 \end{figure*}
 }{}}{}
