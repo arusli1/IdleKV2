@@ -1,59 +1,39 @@
 # IdleKV
 
-IdleKV is a research prototype for repairing compressed key-value (KV)
-caches during idle gaps between long-context agent turns. The core idea is
-that a cache compressed after one turn can be stale for the next turn: once
-new turn text reveals what matters, the system can use the idle window to
-restore selected evicted KV rows before decoding resumes.
+IdleKV is a research prototype for **test-time adaptation of long-context KV
+cache state**. In multi-turn agent workflows, a new user turn, tool result, test
+failure, or file change can shift which earlier context matters. IdleKV studies
+whether a runtime can use the pause before decoding resumes to adapt the active
+GPU KV cache to that new relevance signal.
 
-The paper studies this under matched resumed active-cache budgets. IdleKV
-keeps evicted KV rows in an off-device evicted-KV store, scores candidates
-after the next-turn relevance signal is known, restores a fixed budget `K`,
-and compares against a no-repair baseline with the same active-cache budget.
+The prototype keeps evicted KV rows in an off-device store, scores them after
+the next-turn signal is known, and promotes a restore budget `K` back into the
+active cache. All main comparisons use a matched resumed active-cache budget:
+IdleKV is compared against no-repair and content-agnostic restore controls with
+the same number of active context KV rows.
 
-## Current Status
+## Current Evidence
 
-- Paper draft: `paper/main.tex`; rebuilt PDF: `paper/main.pdf`.
-- Main figure generation: `paper/scripts/render_paper_figures.py`.
-- Paper guide and terminology/style rules: `paper_guide.md`.
-- Locked main evidence currently covers MQ-NIAH-2Q/4Q/6Q/8Q on
-  Qwen2.5-7B-Instruct, plus specificity, multi-turn, and first-stage
-  retention-policy diagnostics.
-- Critical-flaw closure and next experiments are tracked in
-  `phases/phase14_critical_flaw_closure/phase14_plan.md`; promote only locked
-  runs that pass written gates.
-- Active Phase 14 questions are scalable proxy-scorer validity, Refresh-K
-  boundary framing, calibrated Llama portability, selector variants, and
-  whether any additional evidence should replace rather than merely add to the
-  main paper.
+- Main controlled task family: split-query multi-query needle-in-a-haystack
+  (MQ-NIAH), which gives explicit cross-turn relevance shifts and annotated
+  future-relevant spans.
+- Main model: Qwen2.5-7B-Instruct at 32K context.
+- Main result set: MQ-NIAH-2Q/4Q/6Q/8Q restore-budget sweeps, specificity
+  controls, a five-turn relevance-shift diagnostic, retention-rule sensitivity,
+  and runtime-capacity probes.
+- Current limitation: this is not yet an end-to-end agent benchmark. Llama and
+  proxy-scorer checks are useful diagnostics, but broader model-family and
+  deployment-latency claims require additional non-saturated and trace-backed
+  evidence.
 
-## Repository Map
+## Paper
 
-- `paper/`: ICML-style draft, figure assets, and rendering scripts.
-- `paper_guide.md`: source-of-truth writing, terminology, and figure rules.
-- `docs/`: current project status and result-retention notes.
-- `phases/phase6_repair/`: matched-budget repair protocol, selectors,
-  reporting, and tests.
-- `phases/phase7_broader_evidence/`: locked 4Q/6Q evidence and export
-  scripts.
-- `phases/phase9_experiment_deepening/`: operating-regime and proxy-scorer
-  experiments.
-- `phases/phase10_expansion/`: query-count breadth, specificity, multi-turn,
-  retention-policy, model-transfer, and quantization probes.
-- `phases/phase11_main_robustness/`: Llama 4Q and accumulated-attention
-  retention robustness runs.
-- `phases/phase12_policy_breadth/`: sink-plus-recent retention breadth runs.
-- `phases/phase13_iteration_framework/`: closure framework, promotion gates,
-  and active next-run scripts.
-- `phases/phase14_critical_flaw_closure/`: current critical-flaw closure
-  phase, smoke evaluators, and locked-run wrappers for promoted branches.
-- `saved_results/`: small retained summaries from earlier phases.
-- `models/`: local model weights only; ignored by git.
-- `ruler/`: vendored RULER checkout; treated as external benchmark code.
+- Source: `paper/main.tex`
+- Rebuilt PDF: `paper/main.pdf`
+- Figure renderer: `paper/scripts/render_paper_figures.py`
+- Writing and venue guide: `paper_guide.md`
 
-## Rebuild The Paper
-
-From the repo root:
+Rebuild from the repo root:
 
 ```bash
 .venv/bin/python paper/scripts/render_paper_figures.py
@@ -61,14 +41,14 @@ cd paper
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-`paper/main.pdf` should rebuild without LaTeX errors. LaTeX intermediates are
-kept under `paper/aux/` by `paper/.latexmkrc`. Underfull box warnings from
-float placement are acceptable; overfull text or figure overlap should be fixed
-before a paper snapshot.
+LaTeX intermediates are written to `paper/aux/` by `paper/.latexmkrc`. Underfull
+box warnings from float placement are acceptable; undefined references,
+undefined citations, overfull boxes, or figure overlap should be fixed before a
+paper snapshot.
 
-## Test Commands
+## Tests
 
-Targeted paper/closure tests:
+Run focused paper and closure tests:
 
 ```bash
 .venv/bin/python -m pytest \
@@ -79,42 +59,60 @@ Targeted paper/closure tests:
   phases/phase10_expansion/tests/test_multiturn_runner.py -q
 ```
 
-Broader CPU-side suite:
+Run the broader CPU-side suite:
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
-Run unit tests after code changes. GPU experiments should be preceded by the
-smallest smoke that can falsify the experiment design.
+GPU experiments should always start with the smallest smoke test that can
+falsify the design, then move to a locked run only after the smoke passes a
+written gate.
 
-## Experiment Discipline
+## Repository Map
 
-Every GPU run should be tied to one of two purposes:
+- `paper/`: ICML-style paper draft, figure assets, and rendering scripts.
+- `paper_guide.md`: terminology, venue constraints, figure rules, and editing
+  guardrails.
+- `phases/phase6_repair/`: core matched-budget repair protocol, selectors,
+  reporting, and unit tests.
+- `phases/phase9_experiment_deepening/` through
+  `phases/phase14_critical_flaw_closure/`: experiment expansions, smoke
+  evaluators, locked-run wrappers, and paper-readiness audits.
+- `docs/`: project status and result-retention notes.
+- `saved_results/`: retained summaries from earlier runs.
+- `models/`: local model weights; ignored by git.
+- `ruler/`: vendored RULER checkout; treated as external benchmark code.
 
-- **Smoke run:** validate task design, implementation, budget calibration, and
-  failure modes before spending more compute.
-- **Locked run:** produce a pre-specified figure/table candidate with a written
-  promotion gate.
+## Experiment Conventions
 
-Long GPU jobs should run in `tmux`, write explicit CSV/JSON outputs under the
-owning phase directory, and be audited before paper integration. Do not use
-smoke-only data in the main paper.
-
-## Evidence Conventions
-
-- `Matched` means no repair under the same resumed active-cache budget.
-- `IdleKV` means restore conditioned on the current next-turn signal from the
+- `Matched`: no repair under the same resumed active-cache budget.
+- `IdleKV`: restore conditioned on the current next-turn signal from the
   offloaded evicted-KV store.
-- `Gold-K` is a benchmark-metadata hindsight reference, not an implementable
+- `Gold-K`: benchmark-metadata hindsight reference, not an implementable
   algorithm.
-- `Random-K` and `Oldest-K` are content-agnostic restore controls.
-- `Refresh-buffered` reselects the whole resumed active budget from active plus
-  offloaded rows using the next-turn signal; it is a method-boundary reference,
+- `Random-K` and `Oldest-K`: content-agnostic restore controls.
+- `Refresh-buffered`: reselects the full resumed active budget from active plus
+  offloaded rows using the next-turn signal. It is a method-boundary reference,
   not a deployable full-prefix recompute baseline.
-- `Proxy` scoring uses appended next-turn state as a cheaper scorer. Treat it
-  as scalable-scorer evidence only when it passes controlled Random-K,
-  Oldest-K, and Gold-K gates.
+- `Proxy` scoring: cheaper scorer based on appended next-turn state. Treat it
+  as scalable-scorer evidence only when controlled Random-K, Oldest-K, and
+  Gold-K gates pass.
+
+## Current Work Queue
+
+The active closure plan is in
+`phases/phase14_critical_flaw_closure/phase14_plan.md`. The highest-priority
+open questions are:
+
+- whether the controlled proxy scorer preserves the repair effect under
+  Random-K, Oldest-K, and Gold-K controls;
+- whether any non-saturated cross-model run is strong enough for a main-paper
+  model-family statement;
+- whether a real agentic or trace-scheduled benchmark can replace some
+  synthetic evidence;
+- whether additional selector or retention-policy variants add enough signal to
+  replace, rather than merely append, existing figures.
 
 ## Git Hygiene
 

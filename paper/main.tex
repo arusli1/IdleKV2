@@ -51,9 +51,10 @@
 Long-context agent workflows often pause between turns while
 tools or users respond, but key-value (KV) cache compression is usually
 a one-shot decision made before the next turn is known.
-When the follow-up turn changes which earlier context is relevant, the
-resumed active cache can be stale even at the same active-cache budget as
-a no-repair baseline.
+Each new turn can induce a relevance shift; we frame pre-resume cache
+repair as test-time adaptation of active KV state, where model weights
+are fixed but the runtime revises which past context remains active
+under a memory budget.
 We evaluate repair against no-repair under the same number of active
 context KV rows and introduce \idlekv{}, a pre-resume KV promotion
 operator that retains evicted KV in an off-device tier, scores it after
@@ -102,6 +103,10 @@ which past context should remain active.
 We study a minimal controlled instance of that problem: revising a
 compressed cache after the next-turn query is revealed but before
 decoding resumes.
+This places \idlekv{} at the intersection of efficient inference and
+test-time adaptation: as agent tasks become longer and more dynamic,
+runtimes may need to adapt the model's active memory state across turns,
+not only compress it.
 
 \paragraph{Setting.}
 For long-context agents, the relevant subset of a fixed context can
@@ -680,6 +685,9 @@ and the $\goldk$ reference.
 More broadly, long-context agent systems may need to be judged not only
 by how efficiently they decode, but by how well they maintain KV state
 between turns.
+In this view, the adapted object is not the model weights but the active
+inference state that determines which historical context the next decode
+can directly use.
 
 % -----------------------------------------------------------------------
 \begin{thebibliography}{29}
