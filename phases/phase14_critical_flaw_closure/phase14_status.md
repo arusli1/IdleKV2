@@ -194,8 +194,8 @@ The remaining over-detail risks are:
 - Method exclusions: implementation limits should be concise in Method and
   expanded only in Discussion. The latest edit shortened the distributed
   systems exclusion list without hiding the assumption.
-- Saturated portability checks: the Llama result is now appendix-only and is
-  explicitly not used for model-family claims.
+- Portability checks: the stronger Llama 4Q grid is now reflected in main
+  prose, but it is explicitly not used for broad model-family claims.
 
 The reviewer holes that remain material are:
 
@@ -203,7 +203,7 @@ The reviewer holes that remain material are:
   proxy path preserves quality under Random-K/Oldest-K/Gold-K controls.
 - Trace-scheduled evaluation: the paper cites web/coding-agent wait evidence,
   but it still lacks a real wait-distribution scheduler experiment.
-- Broader generality: current Llama and retention-rule evidence are appendix
+- Broader generality: current Llama and retention-rule evidence are targeted
   breadth checks, not enough for a broad model-family or named-policy claim.
 - Algorithmic headroom: Refresh-buffered and Gold-K show that IdleKV is a
   useful promotion primitive, not the final selector.
@@ -244,8 +244,9 @@ Result:
 - `specificity`: boundary result. IdleKV beats stale/donor controls, but
   Refresh-K exceeds IdleKV by `+0.458`, so the paper must frame Refresh-K
   explicitly as full-budget reselection/headroom.
-- `llama`: appendix-only portability. The current Llama run has `n=12`, only
-  three K values, and saturates at `1.0`.
+- `llama`: current readiness now prefers the Phase 11 Llama-3.1-8B 4Q
+  full-grid artifact (`n=24`, nine K values), which passes the
+  non-saturation/main-candidate audit for a cautious portability statement.
 - `policy breadth`: protocol-matched breadth only, not a faithful named
   prior-policy reproduction. If needed, exact Scissorhands is the next branch.
 

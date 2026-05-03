@@ -18,10 +18,11 @@ dynamic between-turn cache repair.
 | P7 | Main evidence | Locked 4Q/6Q matched-budget frontier data are integrated into the paper. |
 | P8 | Appendix support | Strict active-cache streaming/spill diagnostics are appendix-only coverage evidence. |
 | P9 | Main/appendix support | Operating-regime, proxy-scorer, and paper figure validation are implemented; renderer tests pass. |
-| P10 | Active expansion | Specificity controls, 2Q/8Q full frontiers, and the locked five-turn relevance-shift diagnostic are integrated; Llama-3.1-8B passed the locked `n=12` portability gate and is integrated as appendix evidence; selector variants remain staged. |
+| P10 | Active expansion | Specificity controls, 2Q/8Q full frontiers, and the locked five-turn relevance-shift diagnostic are integrated; selector variants remain staged. |
 | P11 | Done | Accumulated-attention retention inspired by H2O on the 4Q full K-grid `n=24` and Llama-3.1-8B 4Q full K-grid `n=24` both passed the main-candidate gate. |
 | P12 | Done | Sink-plus-recent policy-breadth `n=24` follow-up passed the gate and is integrated as a main figure with SnapKV and accumulated-attention rows. |
 | P13 | Done for current paper | Iterative gates, live-branch audit script, and paired uncertainty checks are implemented. The locked `n=24`, `K=80` five-turn run passed the main gate and is integrated as a main diagnostic with stale-query caveats. |
+| P14 | Active closure | AdaptFM/test-time-adaptation framing, controlled proxy-scorer validation, Llama portability cleanup, and real-agentic diagnostic planning are underway. |
 
 ## Paper State
 
@@ -34,6 +35,8 @@ dynamic between-turn cache repair.
 - Main-candidate robustness plan: `phases/phase11_main_robustness/phase11_plan.md`.
 - Policy-breadth plan: `phases/phase12_policy_breadth/phase12_plan.md`.
 - Iterative closure framework: `phases/phase13_iteration_framework/phase13_plan.md`.
+- Critical-flaw closure plan:
+  `phases/phase14_critical_flaw_closure/phase14_plan.md`.
 - Exact prior-policy audit:
   `phases/phase13_iteration_framework/exact_policy_audit.md`.
 
@@ -44,8 +47,8 @@ SnapKV, accumulated-attention, and sink-plus-recent rows. The 2Q and 8Q curves
 both come from full K-grid runs, not endpoint-only breadth evidence. The
 appendix contains graph-first robustness views for query-count breadth, the
 operating-regime heatmap, selection diagnostics, partition endpoints, scorer
-latency, and a cautious same-protocol Llama-3.1-8B cross-family portability
-check. The Qwen2.5-3B
+latency, and the plotted Llama portability check that is summarized in main
+prose. The Qwen2.5-3B
 same-family transfer result remains fallback appendix evidence rather than
 the preferred paper-facing transfer check.
 
@@ -70,8 +73,11 @@ minimal smoke, and then pass a written promotion gate before it can enter the
 main paper. The locked multi-turn run passed: non-initial IdleKV gain is
 `0.542` with paired interval `[0.458,0.620]`, and current-query-only repair
 beats stale-query-only repair by `0.307` with paired interval `[0.240,0.370]`.
-The next model-transfer step remains a Llama 6Q smoke only if the paper needs
-stronger main-readiness evidence.
+
+Phase 14 reframes the paper as test-time adaptation of active KV state and
+keeps the remaining closure work promotion-gated. The active GPU run is the
+controlled proxy-scorer frontier; the real-agentic diagnostic is currently a
+design artifact, not a completed experiment.
 
 ## Validation
 
@@ -81,7 +87,7 @@ From the repo root:
 .venv/bin/python -m pytest -q
 ```
 
-Current local result: `202 passed, 16 warnings, 304 subtests passed`.
+Current local result: `237 passed, 16 warnings, 304 subtests passed`.
 
 After any paper or figure edit:
 
