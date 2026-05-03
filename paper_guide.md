@@ -731,6 +731,12 @@ Figure and diagram rules:
   included size, thin axes, and embedded fonts. The ICML example explicitly
   uses 10 pt Times, captions below figures, and no large titles inside the
   graphic file; keep titles in captions or as small panel labels.
+- Before submission, run `pdffonts paper/main.pdf` and verify there are no
+  Type 3 fonts or unembedded fonts. The current matplotlib renderer uses
+  `pdf.fonttype=42`, so generated plot text may appear as embedded CID
+  TrueType/OpenType rather than literal Type 1; if the submission checker
+  enforces strict Type-1-only fonts, rerender or convert the figure PDFs as a
+  dedicated figure-font pass.
 - Maintain one paper color system: IdleKV blue, hindsight/reference orange,
   matched/no-repair dark gray, random gray, oldest/static green. Use marker
   shape and line style in addition to color so grayscale and color-vision
