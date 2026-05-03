@@ -414,15 +414,12 @@ headroom at intermediate budgets, especially on MQ-NIAH-6Q at $K=48$
   \centering
   \includegraphics[width=\columnwidth]{figures/frontier_raw_overlay.pdf}
   \caption{Raw exact $Q_2$ score under matched resumed-cache budgets.
-  Solid curves show \idlekv{} for each MQ-NIAH query count; dotted
-  curves show matched no-repair with the same resumed active KV budget.
-  Right-side labels report the query count and $\Delta_{96}$, the
-  \idlekv{} minus matched no-repair score difference at $K=96$.
-  Random-$K$/Oldest-$K$ controls and the $\goldk{}$
-  benchmark-metadata reference are summarized by the endpoint robustness
-  view in Appendix Figure~\ref{fig:app-partition-endpoints}.
-  MQ-NIAH-2Q/4Q/6Q use 100-example evaluation sets; MQ-NIAH-8Q uses
-  24 examples per split over five partitions.}
+  Solid curves are \idlekv{}; dotted curves are matched no-repair.
+  Right-side labels report query count and $\Delta_{96}$, the score
+  difference at $K=96$. Endpoint content-agnostic controls and
+  $\goldk{}$ appear in Appendix Figure~\ref{fig:app-partition-endpoints}.
+  MQ-NIAH-2Q/4Q/6Q use 100 examples; MQ-NIAH-8Q uses 24 examples per
+  split over five partitions.}
   \label{fig:main-frontier}
 \end{figure}
 
