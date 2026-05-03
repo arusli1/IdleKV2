@@ -59,6 +59,11 @@ Last updated: 2026-05-03 20:33 UTC.
 - Updated `README.md` so the active closure phase points to Phase 14.
 - Added `paper/.latexmkrc` and removed regenerated LaTeX intermediates from
   `paper/`; future rebuilds keep aux/log files in `paper/aux/`.
+- Ran a second outline-guided paper economy pass: removed the paper-facing
+  "locked" run label, shortened the method-scope exclusion list, compressed
+  multi-turn result narration, demoted saturated Llama numbers out of main
+  prose, and split the limitations paragraph so the trace-scheduled systems
+  gap and tiered-KV scaling implication are separate.
 
 ## Validation
 
@@ -97,6 +102,10 @@ Last updated: 2026-05-03 20:33 UTC.
 - Rebuilt `paper/main.pdf` after each paper edit. References start on page 7,
   so the main body remains within the six-page limit; total PDF length is 13
   pages with appendix.
+- Rebuilt `paper/main.pdf` after the second outline-guided paper economy pass;
+  log scan again found no undefined citations or overfull boxes, and the PDF
+  text scan found no visible internal run vocabulary beyond bibliography
+  titles.
 
 ## Paper Economy Audit
 
@@ -115,6 +124,9 @@ The remaining over-detail risks are:
 - Method exclusions: implementation limits should be concise in Method and
   expanded only in Discussion. The latest edit shortened the distributed
   systems exclusion list without hiding the assumption.
+- Saturated portability checks: the Llama result is now summarized as
+  preliminary portability in main prose, with exact numbers left to the
+  appendix so it does not read like a broad model-family claim.
 
 The reviewer holes that remain material are:
 
@@ -126,6 +138,10 @@ The reviewer holes that remain material are:
   breadth checks, not enough for a broad model-family or named-policy claim.
 - Algorithmic headroom: Refresh-buffered and Gold-K show that IdleKV is a
   useful promotion primitive, not the final selector.
+- Off-device retention policy: the paper now states the two-level retention
+  problem explicitly, but it does not solve how a long-running agent should
+  choose which evicted rows remain searchable, compressed, summarized, or
+  recomputable in warm/cold tiers.
 
 Reviewer-agent triage:
 

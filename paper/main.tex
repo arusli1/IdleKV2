@@ -64,7 +64,7 @@ MQ-NIAH-4Q/6Q/8Q restore-budget sweeps
 show \idlekv{} improving $Q_2$ score over matched no-repair by $0.755$,
 $0.575$, and $0.435$ at $K=128$, while random/oldest-token restores
 stay near the matched baseline.
-A locked five-turn revisit diagnostic further shows repeated repair
+A fixed five-turn revisit diagnostic further shows repeated repair
 across relevance shifts, with non-initial-turn gain $0.542$ over matched
 no-repair at $K=80$ and paired bootstrap interval $[0.458,0.620]$.
 These controlled diagnostics do not establish end-to-end agent gains,
@@ -234,9 +234,8 @@ The protocol does not rerun full-prefix compression after $Q_2$ is
 revealed.
 It is intentionally a mechanism study: one paused request on one GPU, a
 single host-memory tier, the full $Q_2$ signal known before resumed
-decoding, and a pre-materialized evicted-KV store.
-Distributed routing, queueing, remote fetch, generation overlap, and
-off-device retention contention are treated as limitations.
+decoding, and a pre-materialized evicted-KV store; scheduling, remote
+tiering, and retention contention are left to systems evaluation.
 
 \begin{figure}[t]
 \centering
@@ -458,22 +457,21 @@ For this diagnostic, each post-priming turn appends the previous answer
 to the running cache, recompresses the current context to $\bbase$, and
 repairs using either the current turn query or a stale previous-turn
 query.
-On a locked five-turn MQ-NIAH-8Q revisit schedule ($K=80$, $n=24$),
+On a fixed five-turn MQ-NIAH-8Q revisit schedule ($K=80$, $n=24$),
 \idlekv{} gains $0.542$ over matched no-repair on non-initial turns with
 paired bootstrap interval $[0.458,0.620]$; Random-$K$ and Oldest-$K$
 gain only $0.010$ and $0.021$.
-The strongest effect appears on the revisit turn, where \idlekv{} gains
-$0.938$ with interval $[0.875,1.000]$; Turn 3 has no
-matched-to-\goldk{} headroom and therefore dilutes the aggregate.
+The strongest effect appears on the revisit turn; the one turn with no
+matched-to-\goldk{} headroom dilutes the aggregate.
 A current-query-only audit matches \idlekv{}, while stale-query-only
-repair recovers part of the gap but trails by $0.307$ with paired interval
-$[0.240,0.370]$.
+repair recovers part of the gap but remains clearly below current-query
+repair.
 Thus the figure supports repeated cue-conditioned adaptation under
 controlled relevance shifts, but not end-to-end agent validation.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/multiturn_hard_trajectory.pdf}
-  \caption{Locked five-turn relevance-shift diagnostic on MQ-NIAH-8Q
+  \caption{Five-turn relevance-shift diagnostic on MQ-NIAH-8Q
   ($B{=}18{,}432$, $K{=}80$, $n{=}24$). Groups show post-priming exact
   scores at equal active-cache budget for matched no-repair, \idlekv{},
   and \goldk{}. Blue intervals are bootstrap $95\%$ confidence
@@ -520,10 +518,8 @@ $0.387$ for MQ-NIAH-6Q, and $0.292$ for MQ-NIAH-8Q.
 Appendix Figure~\ref{fig:app-partition-endpoints} gives the
 per-partition endpoints.
 A same-protocol appendix check with Llama-3.1-8B-Instruct on MQ-NIAH-6Q
-points in the same direction.
-It does not support a broad model-family claim: \idlekv{} reaches
-$1.000$ at $K\in\{64,96,128\}$ versus $0.472$ for matched no-repair,
-with Random-$K$/Oldest-$K$ at or below matched.
+points in the same direction, but it saturates and is best read as a
+preliminary portability check rather than a broad model-family claim.
 
 The restored tokens also move the final active cache toward the annotated
 $Q_2$ gold spans.
@@ -617,33 +613,31 @@ transcripts.
 The central missing systems experiment is trace-scheduled: repair should
 be tested against real tool/environment wait distributions, queue state,
 and overlap.
-We also do not yet include a learned selector, a latency-normalized
-full-budget $Q_2$-time reselection frontier, or a full-prefix recompute
-baseline.
-The curves match the resumed active GPU KV budget, not total
-host-plus-device storage.
-Figure~\ref{fig:policy-breadth} gives accumulated-attention and
-sink-plus-recent first-stage retention checks, and Appendix
-Figure~\ref{fig:app-transfer-runtime} gives one same-protocol
-Llama-3.1-8B-Instruct MQ-NIAH-6Q portability check, but broader
-retention-rule and multi-model transfer remain open.
-Because repair assumes an offloaded evicted-KV store, it also creates a
-two-level retention problem.
+The main algorithmic gaps are also clear: a learned or page-level
+selector, a latency-normalized $Q_2$-time reselection frontier, and a
+full-prefix recompute baseline.
+Figure~\ref{fig:policy-breadth} and Appendix
+Figure~\ref{fig:app-transfer-runtime} give first-stage-retention and
+same-protocol Llama checks, but broader retention-rule and multi-model
+transfer remain open.
+
+Repair also creates a two-level retention problem because the curves match
+only the resumed active GPU KV budget, not total host-plus-device storage.
 A strict device-resident policy chooses the active KV budget, while a
 looser off-device policy decides which evicted rows remain searchable,
 compressed, summarized, or recomputable; in our Qwen-shaped accounting,
 4M searchable rows already imply about 240\,GB before metadata.
 \idlekv{} provides evidence for the middle operation in this hierarchy:
-turn-conditioned promotion from the warm tier during an idle gap.
-This is a hardware-facing implication rather than a hardware result: the
+turn-conditioned promotion from a warm tier during an idle gap.
+This is a hardware-facing implication, not a hardware result: the
 measurements motivate tiered-KV interfaces that expose scoring,
 promotion, and demotion, but they do not establish area, energy, or
-bandwidth claims, and \idlekv{} does not solve off-device retention.
+bandwidth claims or solve off-device retention.
 Future benchmarks should therefore vary the number, timing, and conflict
 structure of new-turn constraints: the 2Q and 8Q breadth checks suggest
 that easy regimes can saturate while stricter multi-query turns expose
 how quickly eviction failures accumulate.
-The locked five-turn diagnostic in Figure~\ref{fig:multiturn} strengthens
+The five-turn diagnostic in Figure~\ref{fig:multiturn} strengthens
 the dynamic-workflow evidence, but it remains synthetic and a stale
 previous-query scorer still closes part of the gap.
 The current selector also leaves visible gap to $\goldk$ at moderate $K$,
