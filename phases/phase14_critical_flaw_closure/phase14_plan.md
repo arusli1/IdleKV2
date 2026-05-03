@@ -134,22 +134,25 @@ Refresh-K becomes useful headroom evidence.
 
 ### P2: Is there enough cross-model evidence?
 
-**Risk.** Llama evidence currently saturates at `1.0` across the locked K-grid.
-That is useful portability evidence, not a broad model-family claim.
+**Current status.** The older Llama 6Q check saturated, but the Phase 11
+Llama-3.1-8B 4Q full K-grid at `n=24` is non-saturated at lower restore budgets
+and passes the main-candidate audit. The paper now uses it as a cautious
+same-protocol portability statement, not as a broad model-family claim.
 
-**Next action.** Do not run a larger Llama grid until a smoke finds a
-non-saturated setting with at least two adjacent useful K values. Candidate
-smoke: Llama-3.1-8B-Instruct, MQ-NIAH-6Q, lower base budget or lower K-grid,
-`n=2`, `K={24,32,48,64}`.
+**Next action.** Do not spend more GPU on Llama unless the paper needs a
+stronger cross-model figure than the current main-text portability statement.
+If opened, smoke a harder non-saturated Llama setting first rather than scaling
+the saturated 6Q branch.
 
-**Promotion gate.** Full-cache score at least `0.90`, matched no-repair gap at
-least `0.20`, IdleKV improves over matched and content-agnostic controls at two
-K values, and Gold-K covers IdleKV.
+**Promotion gate for any future cross-model figure.** Full-cache score at least
+`0.90`, matched no-repair gap at least `0.20`, IdleKV improves over matched and
+content-agnostic controls at two K values, Gold-K covers IdleKV, and the curve
+is not flat at saturation.
 
-**Locked run if smoke passes.** Repeat the calibrated non-saturated setting
-with `n=24` and the same K-grid using
-`run_llama_calibrated_locked.sh`. This is the minimum bar for moving Llama from
-appendix portability to a main-paper cross-model claim.
+**Locked run if a future smoke passes.** Repeat the calibrated non-saturated
+setting with `n=24` and the same K-grid using
+`run_llama_calibrated_locked.sh`. This is the minimum bar for moving beyond the
+current portability statement.
 
 ### P3: Should policy breadth use an exact named prior policy?
 

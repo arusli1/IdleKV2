@@ -1,6 +1,6 @@
 # Phase 14 Status
 
-Last updated: 2026-05-03 20:50 UTC.
+Last updated: 2026-05-03 21:08 UTC.
 
 ## Implemented
 
@@ -94,7 +94,16 @@ Last updated: 2026-05-03 20:50 UTC.
   evidence is framed as a capacity envelope consistent with multi-second
   tool/environment components rather than a measured idle-window trace,
   retention-rule evidence is scoped to protocol-matched heuristics, Llama is
-  appendix-only, and the overlap diagnostic is a short mechanism check.
+  not used for broad model-family claims, and the overlap diagnostic is a short
+  mechanism check.
+- Added the outside-facing README framing and pushed it.
+- Reframed the paper around test-time adaptation of active KV state across
+  relevance shifts, with a direct AdaptFM scope sentence in the introduction.
+- Replaced the stale saturated Llama 6Q appendix source with the Phase 11
+  Llama-3.1-8B 4Q full K-grid (`n=24`) and updated the main text to treat it as
+  a cautious same-protocol portability check rather than a model-family claim.
+- Updated the figure renderer and readiness audit so non-saturated cross-model
+  full grids are preferred over older saturated short-grid artifacts.
 
 ## Validation
 
@@ -128,6 +137,14 @@ Last updated: 2026-05-03 20:50 UTC.
   found no undefined citations or overfull boxes.
 - Rebuilt `paper/main.pdf` after the appendix caption trim; log scan found no
   undefined citations or overfull boxes.
+- `.venv/bin/python -m pytest phases/phase9_experiment_deepening/tests/test_paper_figure_renderer.py phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py phases/phase13_iteration_framework/tests/test_paper_language.py -q`
+  - `27 passed`
+- `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` from
+  `paper/`
+  - rebuilt `paper/main.pdf` successfully after the test-time adaptation and
+    Llama portability edits
+  - log scan found no undefined citations, undefined references, or overfull
+    boxes
 - Rebuilt `paper/main.pdf` after the latest outline-guided ramble/hole pass;
   log scan again found no undefined citations or overfull boxes.
 - Incorporated two reviewer-agent critiques into `paper/main.tex`:
