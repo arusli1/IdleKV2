@@ -17,6 +17,9 @@ Last updated: 2026-05-03 20:33 UTC.
   paper audit.
 - Added automated Phase 14 smoke evaluators for Refresh-K frontiers, calibrated
   Llama smokes, and selector variants.
+- Updated the readiness audit so that, once the locked controlled-proxy CSV
+  exists, P0 uses that CSV for controlled quality and Random/Oldest/Gold checks
+  while still using the existing fixed-K proxy reference for latency speedup.
 - Added a log monitor:
   `phases/phase14_critical_flaw_closure/scripts/monitor_proxy_progress.py`,
   which reports live controlled-proxy progress and partial per-$K$ means from
@@ -78,10 +81,11 @@ Last updated: 2026-05-03 20:33 UTC.
 - `bash -n phases/phase14_critical_flaw_closure/scripts/*.sh`
 - `.venv/bin/python -m py_compile phases/phase14_critical_flaw_closure/scripts/*.py phases/phase9_experiment_deepening/scripts/phase9_artifact_summary.py`
 - `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
-  - `11 passed`
+  - `12 passed`
 - `.venv/bin/python -m py_compile phases/phase14_critical_flaw_closure/scripts/monitor_proxy_progress.py`
 - `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
-  - `11 passed` after adding monitor ETA coverage
+  - `12 passed` after adding monitor ETA coverage and controlled-proxy
+    readiness coverage
 - `.venv/bin/python -m pytest phases/phase6_repair/tests/test_runner.py phases/phase6_repair/tests/test_reporting.py -q`
   - `37 passed`
 - `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` from

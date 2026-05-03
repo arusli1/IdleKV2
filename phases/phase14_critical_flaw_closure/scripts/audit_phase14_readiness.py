@@ -42,6 +42,12 @@ def _row_by_k(rows: Iterable[dict[str, str]], k: int) -> dict[str, str] | None:
     return None
 
 
+def _filter_task(rows: list[dict[str, str]], task: str | None) -> list[dict[str, str]]:
+    if task is None or not any("task" in row for row in rows):
+        return rows
+    return [row for row in rows if row.get("task") == task]
+
+
 def _safe_ratio(numerator: float, denominator: float) -> float:
     if denominator <= 1e-12:
         return float("inf") if numerator > 0 else 0.0
@@ -57,33 +63,40 @@ def audit_proxy_pair(
     label: str,
     exact_csv: Path,
     proxy_csv: Path,
+    latency_proxy_csv: Path | None = None,
+    task: str | None = None,
     headline_k: int = 96,
     retention_gate: float = 0.85,
 ) -> dict[str, object]:
-    if not exact_csv.exists() or not proxy_csv.exists():
+    latency_proxy_csv = latency_proxy_csv or proxy_csv
+    required_paths = (exact_csv, proxy_csv, latency_proxy_csv)
+    if not all(path.exists() for path in required_paths):
         return {
             "label": label,
             "status": "missing_artifact",
-            "missing": [str(path) for path in (exact_csv, proxy_csv) if not path.exists()],
+            "missing": [str(path) for path in required_paths if not path.exists()],
         }
 
-    exact_rows = _read_csv(exact_csv)
-    proxy_rows = _read_csv(proxy_csv)
+    exact_rows = _filter_task(_read_csv(exact_csv), task)
+    proxy_rows = _filter_task(_read_csv(proxy_csv), task)
+    latency_proxy_rows = _filter_task(_read_csv(latency_proxy_csv), task)
     exact = _row_by_k(exact_rows, headline_k)
     proxy = _row_by_k(proxy_rows, headline_k)
-    if exact is None or proxy is None:
+    latency_proxy = _row_by_k(latency_proxy_rows, headline_k)
+    if exact is None or proxy is None or latency_proxy is None:
         return {
             "label": label,
             "status": "missing_headline_k",
             "headline_k": headline_k,
+            "task": task,
         }
 
     exact_lift = _float(exact, "idlekv") - _float(exact, "b_match")
     proxy_lift = _float(proxy, "idlekv") - _float(proxy, "b_match")
     retained_gain = _safe_ratio(proxy_lift, exact_lift)
     absolute_loss = _float(exact, "idlekv") - _float(proxy, "idlekv")
-    total_speedup = _safe_ratio(_float(exact, "p50_total_ms"), _float(proxy, "p50_total_ms"))
-    score_speedup = _safe_ratio(_float(exact, "p50_score_ms"), _float(proxy, "p50_score_ms"))
+    total_speedup = _safe_ratio(_float(exact, "p50_total_ms"), _float(latency_proxy, "p50_total_ms"))
+    score_speedup = _safe_ratio(_float(exact, "p50_score_ms"), _float(latency_proxy, "p50_score_ms"))
     has_controls = all(_column_has_data(proxy_rows, column) for column in ("random_k", "oldest_k", "gold_k"))
     k_points = len({_int(row, "k", -1) for row in proxy_rows if _int(row, "k", -1) >= 0})
 
@@ -114,6 +127,9 @@ def audit_proxy_pair(
         "label": label,
         "status": status,
         "headline_k": headline_k,
+        "task": task,
+        "quality_source": str(proxy_csv),
+        "latency_source": str(latency_proxy_csv),
         "exact_lift": round(exact_lift, 6),
         "proxy_lift": round(proxy_lift, 6),
         "retained_gain": round(retained_gain, 6),
@@ -223,17 +239,24 @@ def audit_policy_breadth(paths: list[Path]) -> dict[str, object]:
 
 def audit_all(repo_root: Path = REPO_ROOT) -> dict[str, object]:
     figures = repo_root / "paper" / "figures"
+    phase14_results = repo_root / "phases" / "phase14_critical_flaw_closure" / "results"
+    controlled_proxy = phase14_results / "proxy_controlled_locked_n100.csv"
+    use_controlled_proxy = controlled_proxy.exists()
     proxy = [
         audit_proxy_pair(
             label="4q_proxy",
             exact_csv=figures / "phase9_proxy_exact_4q_reference.csv",
-            proxy_csv=figures / "phase9_proxy_4q_full_n100.csv",
+            proxy_csv=controlled_proxy if use_controlled_proxy else figures / "phase9_proxy_4q_full_n100.csv",
+            latency_proxy_csv=figures / "phase9_proxy_4q_full_n100.csv",
+            task="clean_suite" if use_controlled_proxy else None,
             retention_gate=0.85,
         ),
         audit_proxy_pair(
             label="6q_proxy",
             exact_csv=figures / "phase9_proxy_exact_6q_reference.csv",
-            proxy_csv=figures / "phase9_proxy_6q_full_n100.csv",
+            proxy_csv=controlled_proxy if use_controlled_proxy else figures / "phase9_proxy_6q_full_n100.csv",
+            latency_proxy_csv=figures / "phase9_proxy_6q_full_n100.csv",
+            task="mq_niah_6q_clean_suite" if use_controlled_proxy else None,
             retention_gate=0.85,
         ),
     ]
@@ -303,4 +326,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
