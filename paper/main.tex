@@ -25,12 +25,12 @@
 
 \usepackage{icml2026}
 
-\icmltitlerunning{IdleKV: Using Idle Time to Repair Long-Context KV Caches}
+\icmltitlerunning{IdleKV: Adapting Long-Context KV Caches During Agent Idle Time}
 
 \begin{document}
 
 \twocolumn[
-  \icmltitle{IdleKV: Using Idle Time to Repair Long-Context KV Caches}
+  \icmltitle{IdleKV: Adapting Long-Context KV Caches During Agent Idle Time}
 
   \begin{icmlauthorlist}
     \icmlauthor{Andrew Rusli}{equal,harvard}
@@ -71,9 +71,10 @@ across relevance shifts, with non-initial-turn gain $0.542$ over matched
 no-repair at $K=80$ and paired bootstrap interval $[0.458,0.620]$.
 Together, the matched active-cache frontier, repeated-shift diagnostic, and
 retention-rule checks support pre-resume KV repair as a useful
-cache-state adaptation operator for runtimes with active GPU and
-host-memory warm KV tiers, but do not yet establish end-to-end agent gains;
-faster approximate scoring remains necessary for deployment.
+cache-state adaptation operator for a single-node prototype with active GPU
+KV and a pre-materialized host-memory warm tier.
+The current evidence is controlled rather than end-to-end agent validation,
+and faster approximate scoring remains necessary for deployment.
 \end{abstract}
 
 % -----------------------------------------------------------------------
@@ -81,20 +82,23 @@ faster approximate scoring remains necessary for deployment.
 % -----------------------------------------------------------------------
 
 \paragraph{Motivation.}
-Long-context LLM inference often becomes a key-value (KV) cache
-management problem: the model's attention state must fit a limited active
-GPU cache even when the application-visible context is much larger.
+Long-context agents create a temporal mismatch between when the runtime
+compresses key-value (KV) state and when the next-turn relevance signal
+arrives.
+The model's attention state must fit a limited active GPU cache even when
+the application-visible context is much larger, so compression often
+commits which historical tokens remain active before the next user turn,
+tool result, test failure, or file change is known.
 In batch-1, local-GPU, or dedicated-tenant agent workflows, decoding is
-interleaved with file reads, tests, retrieval, remote APIs, and other
-external actions that pause generation for milliseconds to seconds while
-the KV state remains useful.
+interleaved with these external actions, which pause generation for
+milliseconds to seconds while the KV state remains useful.
 Recent measurements make this slack concrete: web-environment
 interaction can account for up to 53.7\% of web-agent latency, and
 OS-level execution that includes tool calls and container/agent
 initialization can account for 56--74\% of coding-agent task
 latency~\citep{agent_efficiency,agentcgroup}.
-Those pauses are usually treated as dead time, and cache compression is
-usually treated as a one-shot active-cache decision.
+Those pauses are usually treated as dead time, while cache compression is
+treated as a one-shot active-cache decision.
 We argue that the idle interval between turns exposes a test-time
 adaptation point: state can be compressed to the active budget, retained
 in a host-memory warm tier, and promoted back into the active cache when
@@ -157,9 +161,9 @@ We contribute:
   and an instrumented latency probe that separates cheap state movement
   and proxy scoring from the current exact Q$_2$ attention-query scorer.
 \end{itemize}
-The controlled scope is one primary model and one synthetic task family,
-with targeted portability and retention-rule checks.
-The implication is adaptation-facing: long-context agents may need
+This controlled scope identifies the repair mechanism on one primary model and
+one synthetic task family, with targeted portability and retention-rule checks.
+The adaptation-facing implication is that long-context agents may need
 between-turn KV state updates, not only pre-generation pruning.
 
 % -----------------------------------------------------------------------
@@ -167,30 +171,10 @@ between-turn KV state updates, not only pre-generation pruning.
 \label{sec:related}
 % -----------------------------------------------------------------------
 
-On the systems side, PagedAttention/vLLM improves GPU KV allocation and
-block management during serving~\citep{vllm}, while InferCept preserves
-paused requests to avoid recomputing prefixes when augmented generation
-resumes~\citep{infercept}.
-Agent and tool-use benchmarks make external actions part of the
-workload, including API calls, web interaction, repository edits, and
-interactive tasks~\citep{toollm,webarena,swebench,agentbench}.
-These benchmarks motivate paused, stateful workflows, while
-agent-serving systems reason about resume prefills, offloading, and KV
-retention across turn gaps~\citep{continuum,agentserve}.
-Recent KV systems treat cache state as block-oriented infrastructure:
-LMCache and TTKV expose tiered KV storage or temporal tiering across GPU,
-host memory, storage, and network tiers, while serving runtimes combine
-offload, cache reuse, and cache-aware scheduling~\citep{lmcache,ttkv,
-continuum,agentserve}.
-These substrates manage where KV state lives and how it is reused.
-\idlekv{} is complementary: it studies a per-request promotion policy for
-deciding which offloaded rows should re-enter the active cache when a
-later turn reveals a new relevance signal.
-
-On the efficient-decoding side, SnapKV, StreamingLLM, and H$_2$O decide
-what to keep from the current prefix under a fixed budget, while
-query-aware methods such as QUEST emphasize that token criticality
-depends on the active query~\citep{snapkv,streamingllm,h2o,quest}.
+SnapKV, StreamingLLM, and H$_2$O decide what to keep from the current
+prefix under a fixed budget, while query-aware methods such as QUEST
+emphasize that token criticality depends on the active
+query~\citep{snapkv,streamingllm,h2o,quest}.
 Long-context and KV-lifecycle benchmarks stress contexts from ordinary
 long documents to 100K-token regimes, showing that
 application-visible context length does not remove the need for
@@ -208,6 +192,20 @@ By contrast, \idlekv{} starts from an already compressed paused state,
 does not rerun full-prefix selection after $Q_2$ is revealed, and
 revises the active cache before decoding resumes under a matched
 resumed-cache budget.
+
+Serving systems provide the substrate for this question.
+PagedAttention/vLLM improves GPU KV allocation and block management during
+serving~\citep{vllm}, while InferCept preserves paused requests to avoid
+recomputing prefixes when augmented generation resumes~\citep{infercept}.
+Agent and tool-use benchmarks make external actions part of the workload,
+including API calls, web interaction, repository edits, and interactive
+tasks~\citep{toollm,webarena,swebench,agentbench}.
+Agent-serving and KV-tiering systems reason about resume prefills,
+offloading, cache reuse, and tiered storage across GPU, host memory,
+storage, and network tiers~\citep{continuum,agentserve,lmcache,ttkv}.
+These systems manage where KV state lives and how it is reused;
+\idlekv{} asks which offloaded rows should re-enter the active cache when
+a later turn reveals a new relevance signal.
 
 % -----------------------------------------------------------------------
 \section{Method}
@@ -240,10 +238,11 @@ selected rows are copied back into the active device-resident cache
 before $Q_2$ decoding.
 The protocol does not rerun full-prefix compression after $Q_2$ is
 revealed.
-It is intentionally a mechanism study: one paused request on one GPU, a
-single host-memory tier, the full $Q_2$ signal known before resumed
-decoding, and a pre-materialized evicted-KV store; scheduling, remote
-tiering, and retention contention are left to systems evaluation.
+This isolates the adaptation operator for one paused request on one GPU:
+a single host-memory tier, the full $Q_2$ signal known before resumed
+decoding, and a pre-materialized evicted-KV store.
+Scheduling, remote tiering, and retention contention are separate systems
+questions.
 
 \begin{figure}[t]
 \centering
@@ -479,7 +478,8 @@ A current-query-only audit matches \idlekv{}, while stale-query-only
 repair recovers part of the gap but remains clearly below current-query
 repair.
 Thus the figure supports repeated cue-conditioned adaptation under
-controlled relevance shifts, but not end-to-end agent validation.
+controlled relevance shifts; end-to-end task validation requires
+trace-based agent benchmarks.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/multiturn_hard_trajectory.pdf}
@@ -552,8 +552,8 @@ not a deployable implementation: at $K=96$, p50 is $6.08$--$7.62$\,s
 across MQ-NIAH-2Q/4Q/6Q/8Q and is dominated by scoring.
 The $Q_2$-appended-state proxy reduces paired 4Q/6Q p50 to
 $0.83$/$0.71$\,s while remaining above $\bmatch$ in preliminary paired
-fixed-$K$ probes; controlled Random/Oldest/Gold comparisons are
-reported separately.
+fixed-$K$ probes; controlled Random/Oldest/Gold proxy frontiers are a
+separate promotion gate.
 The systems question is whether a scalable score/select/promote path can
 fit inside seconds-scale pause budgets, not whether the current exact scorer
 is deployable.
@@ -677,9 +677,9 @@ the same matched-budget controls.
 
 Pauses between agent turns can be treated as part of the inference budget
 rather than as dead time.
-\idlekv{} studies one concrete way to spend that budget: promote
-host-memory KV back into the active GPU cache before the next turn under
-a matched resumed active-cache budget.
+\idlekv{} studies one concrete way to spend that budget: in a single-node
+prototype, promote host-memory KV back into the active GPU cache before
+the next turn under a matched resumed active-cache budget.
 On calibrated pooled split-query MQ-NIAH-4Q/6Q/8Q panels, the final
 exact evaluations show that idle-window repair can substantially
 outperform matched no-repair retention while random and oldest-token

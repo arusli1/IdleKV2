@@ -30,7 +30,9 @@ dynamic between-turn cache repair.
 - Built PDF: `paper/main.pdf`.
 - Figure renderer: `paper/scripts/render_paper_figures.py`.
 - Paper rules and terminology: `paper_guide.md`.
-- Active experiment queue: `phases/phase10_expansion/run_state.md`.
+- Active closure status:
+  `phases/phase14_critical_flaw_closure/phase14_status.md`.
+- Historical Phase 10 queue: `phases/phase10_expansion/run_state.md`.
 - High-signal experiment map: `phases/phase10_expansion/phase10_high_signal_map.md`.
 - Main-candidate robustness plan: `phases/phase11_main_robustness/phase11_plan.md`.
 - Policy-breadth plan: `phases/phase12_policy_breadth/phase12_plan.md`.
@@ -75,9 +77,10 @@ main paper. The locked multi-turn run passed: non-initial IdleKV gain is
 beats stale-query-only repair by `0.307` with paired interval `[0.240,0.370]`.
 
 Phase 14 reframes the paper as test-time adaptation of active KV state and
-keeps the remaining closure work promotion-gated. The active GPU run is the
-controlled proxy-scorer frontier; the real-agentic diagnostic is currently a
-design artifact, not a completed experiment.
+keeps the remaining closure work promotion-gated. The canonical live-status
+file is `phases/phase14_critical_flaw_closure/phase14_status.md`. The active
+GPU run is the controlled proxy-scorer frontier; the real-agentic diagnostic is
+currently a design artifact, not a completed experiment.
 
 ## Validation
 
@@ -87,7 +90,9 @@ From the repo root:
 .venv/bin/python -m pytest -q
 ```
 
-Current local result: `237 passed, 16 warnings, 304 subtests passed`.
+Most recent recorded repo-wide CPU result:
+`241 passed, 16 warnings, 304 subtests passed` on 2026-05-03. Re-run before a
+release snapshot because active Phase 14 edits may change tests.
 
 After any paper or figure edit:
 

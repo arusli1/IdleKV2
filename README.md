@@ -1,30 +1,59 @@
 # IdleKV
 
 IdleKV is a research prototype for **test-time adaptation of long-context KV
-cache state**. In multi-turn agent workflows, a new user turn, tool result, test
-failure, or file change can shift which earlier context matters. IdleKV studies
-whether a runtime can use the pause before decoding resumes to adapt the active
-GPU KV cache to that new relevance signal.
+cache state**. In paused, multi-turn agent workflows, a new user turn, tool
+result, test failure, or file change can shift which earlier context matters.
+IdleKV studies whether the runtime can use the pause before decoding resumes to
+adapt the active GPU KV cache to that new relevance signal.
 
-The prototype keeps evicted KV rows in a host-memory warm store, scores them
-after the next-turn signal is known, and promotes a restore budget `K` back into
-the active cache. All main comparisons use a matched resumed active-cache budget:
-IdleKV is compared against no-repair and content-agnostic restore controls with
-the same number of active context KV rows.
+The prototype keeps evicted context KV rows in a host-memory warm tier, scores
+them after the next-turn signal is known, and promotes a restore budget `K` back
+into the active cache. The main comparisons use a matched resumed active-cache
+budget: IdleKV is compared against no-repair and content-agnostic restore
+controls with the same number of active context KV rows.
 
-## Current Evidence
+## Research Question
 
-- Main controlled task family: split-query multi-query needle-in-a-haystack
-  (MQ-NIAH), which gives explicit cross-turn relevance shifts and annotated
+Long-context KV compression is usually a one-shot decision made before the next
+turn is known. IdleKV asks a narrower question:
+
+> If a future turn reveals new evidence about which past tokens matter, can a
+> runtime repair the active KV state during idle time without increasing the
+> resumed active-cache budget?
+
+This is a mechanism study, not a production serving stack. The paper treats KV
+repair as an inference-time adaptation operator over active state: model weights
+stay fixed, while the runtime revises which historical context the next decode
+can directly attend to.
+
+## Scope and Prerequisites
+
+- The matched budget is the resumed active context KV budget. IdleKV also keeps
+  an offloaded warm store, and the paper reports those storage, scoring, and
+  transfer costs separately.
+- The runtime figure is a single-node capacity envelope for score/select/promote
+  mechanics, not a trace-backed distribution of real tool-call wait times.
+- Paper-grade GPU runs assume local model weights under `models/`, the vendored
+  `ruler/` checkout, CUDA/PyTorch, and enough GPU memory for the selected model
+  and context length.
+- CPU tests and figure-rendering checks can be run without launching new GPU
+  experiments.
+
+## Evidence in This Repository
+
+- Controlled benchmark: split-query multi-query needle-in-a-haystack
+  (MQ-NIAH), which provides explicit cross-turn relevance shifts and annotated
   future-relevant spans.
-- Main model: Qwen2.5-7B-Instruct at 32K context.
-- Main result set: MQ-NIAH-2Q/4Q/6Q/8Q restore-budget sweeps, specificity
-  controls, a five-turn relevance-shift diagnostic, retention-rule sensitivity,
-  and runtime-capacity probes.
-- Current limitation: this is not yet an end-to-end agent benchmark. The
-  Llama-3.1-8B result is a same-protocol portability check, not a broad
-  model-family claim, and proxy-scorer deployment claims require controlled
-  quality evidence plus trace-backed latency evidence.
+- Primary model: Qwen2.5-7B-Instruct at 32K context.
+- Main experiments: MQ-NIAH-2Q/4Q/6Q/8Q restore-budget sweeps, next-turn
+  specificity controls, a five-turn relevance-shift diagnostic, retention-rule
+  sensitivity, and runtime-capacity probes.
+- Breadth checks: a same-protocol Llama-3.1-8B 4Q portability probe and
+  protocol-matched retention-rule variants.
+- Open gap: the current paper is still controlled/synthetic. The repo includes
+  a CPU-tested RepoDelta generator for future real-repository relevance-shift
+  experiments, but it is not paper evidence until GPU ability and repair smokes
+  pass the written gates.
 
 ## Paper
 
@@ -33,7 +62,7 @@ the same number of active context KV rows.
 - Figure renderer: `paper/scripts/render_paper_figures.py`
 - Writing and venue guide: `paper_guide.md`
 
-Rebuild from the repo root:
+Rebuild the paper from the repo root:
 
 ```bash
 .venv/bin/python paper/scripts/render_paper_figures.py
@@ -41,12 +70,11 @@ cd paper
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-LaTeX intermediates are written to `paper/aux/` by `paper/.latexmkrc`. Underfull
-box warnings from float placement are acceptable; undefined references,
-undefined citations, overfull boxes, or figure overlap should be fixed before a
-paper snapshot.
+LaTeX intermediates are written to `paper/aux/` by `paper/.latexmkrc`.
+Undefined references, undefined citations, overfull boxes, or figure overlap
+should be fixed before a paper snapshot.
 
-## Tests
+## Reproducing Checks
 
 Run focused paper and closure tests:
 
@@ -65,9 +93,8 @@ Run the broader CPU-side suite:
 .venv/bin/python -m pytest -q
 ```
 
-GPU experiments should always start with the smallest smoke test that can
-falsify the design, then move to a locked run only after the smoke passes a
-written gate.
+GPU experiments should start with the smallest smoke test that can falsify the
+design, then move to a locked run only after the smoke passes a written gate.
 
 ## Repository Map
 
@@ -84,7 +111,7 @@ written gate.
 - `models/`: local model weights; ignored by git.
 - `ruler/`: vendored RULER checkout; treated as external benchmark code.
 
-## Experiment Conventions
+## Experiment Vocabulary
 
 - `Matched`: no repair under the same resumed active-cache budget.
 - `IdleKV`: restore conditioned on the current next-turn signal from the
@@ -99,22 +126,16 @@ written gate.
   as scalable-scorer evidence only when controlled Random-K, Oldest-K, and
   Gold-K gates pass.
 
-## Current Work Queue
+## Active Questions
 
-The active closure plan is in
-`phases/phase14_critical_flaw_closure/phase14_plan.md`. The highest-priority
-open questions are:
-
-- whether the controlled proxy scorer preserves the repair effect under
-  Random-K, Oldest-K, and Gold-K controls;
-- whether additional non-saturated cross-model runs can justify anything
-  beyond a cautious portability statement;
-- whether a real agentic or trace-scheduled benchmark can replace some
-  synthetic evidence; a CPU-tested RepoDelta generator now exists for a
-  future real-repository relevance-shift smoke, but it is not paper evidence
-  until a GPU smoke passes the written gate;
-- whether additional selector or retention-policy variants add enough signal to
-  replace, rather than merely append, existing figures.
+- Does the controlled proxy scorer preserve the repair effect under Random-K,
+  Oldest-K, and Gold-K controls?
+- Can the RepoDelta real-repository diagnostic become a credible non-synthetic
+  relevance-shift result after full-context GPU smokes?
+- Which selector or retention-policy variants add enough signal to replace an
+  existing figure rather than simply append another one?
+- What trace-scheduled repair experiment best connects the runtime-capacity
+  envelope to real tool/environment wait distributions?
 
 ## Git Hygiene
 

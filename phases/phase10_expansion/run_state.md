@@ -1,24 +1,16 @@
 # Phase 10 Run State
 
-Last updated: 2026-05-03 09:22:00 UTC.
+Last updated: 2026-05-03 22:10 UTC.
 
-This file tracks the active GPU queue and what to do when each job
-finishes. It is operational context, not paper-facing prose.
+This file is historical Phase 10/13 operational context, not the current
+project queue and not paper-facing prose. The canonical live closure status is
+`phases/phase14_critical_flaw_closure/phase14_status.md`.
 
-Current CPU validation: repo-wide `.venv/bin/python -m pytest -q` passes
-with `201 passed`, `16 warnings`, and `304 subtests passed`; the warnings
-are dependency deprecation warnings from Torch/SWIG bindings. Targeted
-Phase 13 audit/uncertainty/paper-language tests pass after the latest
-terminology edits; `git diff --check` is clean.
+Current validation snapshots are tracked in
+`phases/phase14_critical_flaw_closure/phase14_status.md`.
 
-Current long GPU job: `phase13_multiturn_locked` is running in tmux. It
-executes the locked MQ-NIAH hard-revisit multi-turn follow-up with `n=24`,
-`K=80`, exact-Q scoring, and the Full/Matched/IdleKV/CurrentQOnly-K/
-Random-K/Oldest-K/StaleQ-K/StaleQOnly-K/Gold-K condition set. When it
-finishes, generate paired bootstrap uncertainty, run
-`phases/phase13_iteration_framework/scripts/audit_live_branches.py --json`,
-then decide whether the trajectory replaces the operating-regime heatmap in
-the main paper or remains appendix-only.
+The old `phase13_multiturn_locked` tmux job completed and was integrated into
+the paper. Do not use this file to infer active GPU state.
 
 ## Active Queue
 
