@@ -28,7 +28,7 @@ echo "[phase14-proxy-postprocess] rebuilding paper/main.pdf"
 )
 
 echo "[phase14-proxy-postprocess] checking LaTeX log"
-if rg -n "undefined|Citation.*undefined|Overfull" paper/aux/main.log; then
+if rg -n "undefined|Citation.*undefined|Overfull|LaTeX Warning: Reference|Package natbib Warning" paper/aux/main.log; then
   echo "[phase14-proxy-postprocess] found blocking LaTeX warnings" >&2
   exit 1
 fi
