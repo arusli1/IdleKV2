@@ -56,6 +56,11 @@ style contract unless the venue instructions change.
   paper, prefer the default two-column flow unless a specific artifact is
   unreadable at column width. Do not change margins, font size, caption style,
   or page numbering to force spacing.
+- The ICML 2026 example places `\newpage` before `\appendix`, then uses
+  `\onecolumn` for the appendix while noting that two-column appendices are
+  allowed. For this paper, use the example's one-column appendix layout because
+  the appendix is figure-heavy and the two-column version produced large
+  flush-bottom gaps between paragraph blocks.
 - Submissions are double-blind unless preparing a camera-ready version.
 - For anonymous review, do not include visible author names,
   acknowledgments, grant numbers, funding statements, or non-anonymized
@@ -296,6 +301,30 @@ Never include:
 
 AdaptFM short workshop papers and related KV-cache systems papers are
 figure-forward. Our main paper should be graph-first, not table-first.
+
+Adjacent paper structure audit:
+
+- H2O spends the introduction on the deployment bottleneck, three empirical
+  observations, and why they imply a cache policy. Results are organized by
+  accuracy/memory, throughput/latency, and ablations; prose states the insight
+  and leaves dense numeric grids to tables/figures.
+- SnapKV spends early space on the observation that prompt-token importance can
+  be inferred before generation, then uses a method schematic and broad
+  benchmark plots. Its main text does not walk through every curve; it argues why
+  the observation supports the compressor.
+- QUEST follows a strong systems-paper pattern: cost bottleneck, observation
+  that token criticality is query dependent, page-level algorithm, accuracy
+  frontiers, and kernel/runtime breakdown. This is the closest model for
+  IdleKV's "next-turn relevance signal" framing.
+- Modern tiered-KV systems such as Dynamo/KVBM, LMCache, and TTKV should be
+  treated as substrates for storage, routing, transfer, and reuse. IdleKV should
+  spend words on the missing policy question: which buffered KV units should be
+  promoted after the next-turn signal arrives?
+- Use production documentation and engineering blogs, such as NVIDIA Dynamo docs,
+  for internal audit and claim-boundary checks. Do not cite them in the main
+  bibliography unless a specific deployed-system fact is essential and no formal
+  paper is available. Prefer peer-reviewed or archival papers in the reference
+  list so the bibliography looks like adjacent ICML/NeurIPS systems papers.
 
 Reference patterns from adjacent papers:
 

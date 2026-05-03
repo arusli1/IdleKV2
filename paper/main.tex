@@ -25,12 +25,12 @@
 
 \usepackage{icml2026}
 
-\icmltitlerunning{IdleKV: Repairing Long-Context Agent Memory}
+\icmltitlerunning{IdleKV: Using Idle Time to Repair Long-Context KV Caches}
 
 \begin{document}
 
 \twocolumn[
-  \icmltitle{IdleKV: Repairing Long-Context Agent Memory Between Turns}
+  \icmltitle{IdleKV: Using Idle Time to Repair Long-Context KV Caches}
 
   \begin{icmlauthorlist}
     \icmlauthor{Andrew Rusli}{equal,harvard}
@@ -55,9 +55,9 @@ When the follow-up turn changes which earlier context is relevant, the
 resumed active cache can be stale even at the same active-cache budget as
 a no-repair baseline.
 We formulate this as a matched resumed active-cache-budget problem and
-introduce \idlekv{}, an idle-window mechanism that keeps evicted KV in a
-host-memory store, scores it after the turn-$(N{+}1)$ query $Q_2$ is
-known, and restores up to $K$ context tokens before decoding resumes.
+introduce \idlekv{}, a pre-resume KV promotion operator that keeps evicted
+KV in an offloaded store, scores it after the turn-$(N{+}1)$ query $Q_2$
+is known, and restores up to $K$ context tokens before decoding resumes.
 On Qwen2.5-7B-Instruct at 32K context, calibrated split-query
 MQ-NIAH-4Q/6Q/8Q restore-budget sweeps
 show \idlekv{} improving $Q_2$ score over matched no-repair by $0.755$,
@@ -125,7 +125,7 @@ claim is broader than query answering.
 \paragraph{Contributions.}
 \idlekv{} targets this gap with dynamic KV cache repair.
 After turn $N$, the runtime compresses the evictable context portion to a
-base budget, offloads evicted KV to a host-memory store, waits for the
+base budget, offloads evicted KV to an offloaded store, waits for the
 tool call, and during the idle window scores the store against the
 now-known turn-$(N{+}1)$ query before restoring up to $K$ context tokens.
 More generally, the scoring signal could come from any newly available
@@ -134,6 +134,10 @@ clean first test of whether post-compression repair can exploit new
 relevance information.
 The adaptation happens in the active KV allocation itself, not in model
 depth, routing, or weight choice.
+In a tiered-KV runtime, \idlekv{} is a policy layer above the storage,
+transfer, and routing substrate: it asks which cached rows should be
+promoted into the resumed active cache once the next-turn signal is
+available.
 This is post-compression pre-resume repair: unlike pause/resume serving,
 it intentionally mutates memory before resumption; unlike within-turn
 query-aware compression, it starts from a paused compressed state and
@@ -165,9 +169,9 @@ need between-turn cache maintenance, not only pre-generation pruning.
 \label{sec:related}
 % -----------------------------------------------------------------------
 
-On the systems side, PagedAttention/vLLM improves KV-memory efficiency
-during serving~\citep{vllm}, while InferCept preserves paused requests
-to avoid recomputing prefixes when augmented generation
+On the systems side, PagedAttention/vLLM improves GPU KV allocation and
+block management during serving~\citep{vllm}, while InferCept preserves
+paused requests to avoid recomputing prefixes when augmented generation
 resumes~\citep{infercept}.
 Agent and tool-use benchmarks increasingly make external actions part of
 the workload: ToolLLM studies single- and multi-tool API use, WebArena
@@ -179,28 +183,32 @@ These benchmarks motivate paused, stateful workflows, while
 agent-serving systems explicitly reason about resume prefills,
 offloading, and KV retention across turn gaps~\citep{continuum,
 agentserve}.
-KV-cache layers and tiered-cache systems already expose off-device KV as
-a managed resource across GPU, host memory, storage, and network
-tiers~\citep{lmcache,ttkv}.
-Our focus is complementary: when a later turn reveals a new retrieval
-target, the runtime must decide which off-device rows should be promoted
-back into the active cache.
+Recent KV systems also treat cache state as block-oriented
+infrastructure: LMCache and TTKV expose tiered KV storage or temporal
+tiering across GPU, host memory, storage, and network tiers, while
+serving runtimes increasingly combine offload, cache reuse, and
+cache-aware scheduling~\citep{lmcache,ttkv,continuum,agentserve}.
+\idlekv{} is complementary to these substrates.
+It is not a new block manager, router, transfer layer, or cross-request
+reuse system; it is a per-request promotion policy for deciding which
+offloaded rows should re-enter the active cache when a later turn reveals
+a new relevance signal.
 Long-context benchmarks now stress contexts from ordinary long documents
 to 100K-token and KV-lifecycle regimes, showing that application-visible
 context length does not remove the need for memory-management
 mechanisms~\citep{longbench,inftybench,ruler,scbench}.
 On the efficient-decoding side, SnapKV, StreamingLLM, and H$_2$O
-compress the cache under a fixed budget, while query-aware methods such
-as QUEST emphasize that token criticality depends on the
-query~\citep{snapkv,streamingllm,h2o,quest}.
+decide what to keep from the current prefix under a fixed budget, while
+query-aware methods such as QUEST emphasize that token criticality
+depends on the active query~\citep{snapkv,streamingllm,h2o,quest}.
 SCBench makes the KV-cache lifecycle itself a benchmark target, and
 ShadowKV shows that sparse KV reconstruction and offload can improve
 long-context serving throughput~\citep{scbench,shadowkv}.
 These works motivate treating KV state dynamically, but they address
 adjacent parts of the problem.
-Serving systems preserve or reload interrupted state efficiently, while
-within-request query-aware methods choose which KV pages or tokens to
-load during active inference.
+Serving systems preserve, route, or reload interrupted state efficiently,
+while within-request query-aware methods choose which KV pages or tokens
+to load during active inference.
 By contrast, \idlekv{} starts from an already compressed paused state,
 does not rerun full-prefix selection after $Q_2$ is revealed, and
 revises memory before decoding resumes under a matched resumed-cache
@@ -237,6 +245,12 @@ selected rows are copied back into the active device-resident cache
 before $Q_2$ decoding.
 The protocol does not rerun full-prefix compression after $Q_2$ is
 revealed.
+It is intentionally a mechanism study: one paused request on one GPU, a
+single host-memory tier, the full $Q_2$ signal known before resumed
+decoding, and a pre-materialized evicted-KV store.
+It excludes routing, request migration, disaggregated prefill/decode,
+remote or disk fetch, queueing, overlap with resumed generation, and
+off-device retention contention.
 
 \begin{figure}[t]
 \centering
@@ -277,6 +291,9 @@ the query often contains a key-bearing anchor while the answer depends on
 nearby value tokens.
 Here $K$ always denotes a restored-context-token budget, not an anchor
 count.
+The current prototype scores token rows, but the systems abstraction is
+promotion over cached units; a production KV manager would batch these
+promotions into its exposed blocks or pages.
 
 \paragraph{Matched-budget evaluation.}
 All main claims are made against a no-repair baseline with the same
@@ -344,6 +361,8 @@ MQ-NIAH-6Q/8Q, sweep
 $K \in \{8,16,24,32,48,64,80,96,128\}$, and reuse one shared
 full-cache-generated $Q_1$ transcript across all conditions within each
 setting.
+This removes turn-$N$ error-cascade differences so that the frontier
+isolates resumed-cache selection quality at turn $N{+}1$.
 MQ-NIAH-4Q/6Q use fixed 100-example evaluation sets per split; MQ-NIAH-8Q
 uses 24 examples per split over five partitions.
 Prompt and decode settings are reported in the appendix.
@@ -433,30 +452,21 @@ room for stronger selection policies.
 \end{figure}
 
 \paragraph{Repeated relevance shifts.}
-Figure~\ref{fig:multiturn} applies the same repair operation across a
-locked five-turn MQ-NIAH-8Q revisit schedule with $K=80$ and $n=24$
-examples.
-The figure shows grouped raw exact scores for matched no-repair,
-\idlekv{}, and the $\goldk{}$ benchmark-metadata reference on each
-post-priming turn.
-Turn 1 is the full-context priming turn and is omitted; turn 3 has
-matched no-repair, \idlekv{}, and $\goldk{}$ all at 1.0, so there is no
-available repair headroom because the matched cache already retains most
-of the requested evidence.
-This no-headroom turn dilutes the aggregate gain rather than inflating it.
-On non-initial turns, \idlekv{} gains $0.542$ over matched no-repair
-with paired bootstrap interval $[0.458,0.620]$; Random-$K$ and
-Oldest-$K$ controls gain only $0.010$ and $0.021$.
-On the revisit turn, \idlekv{} gains $0.938$ with interval
-$[0.875,1.000]$.
-The diagnostic also checks specificity across turns: a current-query-only
-repair matches \idlekv{}, while a stale-query-only repair gains $0.234$
-on non-initial turns, and current-query-only exceeds stale-query-only by
-$0.307$ with paired interval $[0.240,0.370]$.
-This supports repeated adaptation under controlled relevance shifts, but
-the stale-query control still recovers part of the gap, so the evidence
-should be read as a dynamic-workflow diagnostic rather than end-to-end
-agent validation.
+Figure~\ref{fig:multiturn} tests whether repair is useful after repeated
+relevance shifts, not only after one follow-up query.
+On a locked five-turn MQ-NIAH-8Q revisit schedule ($K=80$, $n=24$),
+\idlekv{} gains $0.542$ over matched no-repair on non-initial turns with
+paired bootstrap interval $[0.458,0.620]$; Random-$K$ and Oldest-$K$
+gain only $0.010$ and $0.021$.
+The strongest effect appears on the revisit turn, where \idlekv{} gains
+$0.938$ with interval $[0.875,1.000]$.
+Turn 3 has no matched-to-\goldk{} headroom and therefore dilutes, rather
+than inflates, the aggregate.
+A current-query-only repair matches \idlekv{}, while a stale-query-only
+repair recovers part of the gap; current-query-only still exceeds
+stale-query-only by $0.307$ with paired interval $[0.240,0.370]$.
+Thus the figure supports repeated cue-conditioned adaptation under
+controlled relevance shifts, but not end-to-end agent validation.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/multiturn_hard_trajectory.pdf}
@@ -480,10 +490,10 @@ $K$ gains, and the structurally different sink-plus-recent
 rule also passes the gate: at $K=128$, \idlekv{} gains $0.431$ over
 matched no-repair while Random-$K$/Oldest-$K$ remain at the matched
 baseline.
-These are first-stage retention-policy variants, not canonical
-reproductions of every systems detail in H$_2$O or StreamingLLM, but
-they show that the repair effect is not limited to the primary
-SnapKV-style retention rule.
+These are protocol-matched first-stage retention heuristics inspired by
+H$_2$O and StreamingLLM, not canonical reproductions of their eviction
+kernels, streaming semantics, or serving systems, but they show that the
+repair effect is not limited to the primary SnapKV-style retention rule.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/policy_breadth_delta.pdf}
@@ -550,6 +560,10 @@ query, selects $K$ rows, and combines that selector p95 with the
 measured 32K-active move-and-inject p95 for the same $K$.
 This is a conservative component-summed service-time estimate rather
 than a joined end-to-end latency distribution.
+It is also a single-node component model over a pre-materialized pinned
+host pool; it does not include router decisions, remote or disk fetch,
+cross-worker transfer, queueing, or overlap between repair and resumed
+decoding.
 The full $K\in\{96,512,1024,5000\}$ sweep changes the length-64 p95
 curve by at most $6.1$\,ms, so candidate-store size, not restored-row
 budget, is the dominant scaling axis.
@@ -562,6 +576,9 @@ Qwen-shaped BF16 KV.
 Under a 10\% slack convention, the corresponding continuous idle-budget
 requirement is p95$/0.9$; the colorbar ticks are only representative
 checkpoints, not an empirical tool-call distribution.
+The measured distributions are tight under this synthetic probe: over
+the displayed length-64 grid, stage-summed p99 is at most 2.9\% above
+p95.
 The stage-wise component split shows that candidate scanning dominates
 at large stores, while top-$K$ selection and selected-KV
 copy/reinsertion are not the bottleneck.
@@ -589,11 +606,13 @@ quality curves.
 % -----------------------------------------------------------------------
 
 \paragraph{Positioning.}
-\idlekv{} is a runtime-systems and benchmarking contribution for
-resource-adaptive inference.
-It is complementary to serving systems that preserve or resume paused
-requests efficiently~\citep{vllm,infercept}: here the question is what
-quality-improving work can be done during the interruption.
+\idlekv{} is not a standalone serving stack.
+It is a cache-management operator and benchmark primitive for
+resource-adaptive tiered-KV runtimes.
+It is complementary to serving systems that preserve, route, offload, or
+resume paused requests efficiently~\citep{vllm,infercept,lmcache,ttkv,
+continuum,agentserve}: here the question is what quality-improving promotion policy can
+run during the interruption.
 The setting is also distinct from within-turn query-aware eviction
 because the request has already been compressed and full-prefix
 recomputation is disallowed.
@@ -605,8 +624,8 @@ long enough to cover repair overhead.
 The present evidence is intentionally narrow: one primary model in the
 main evaluation, one primary first-stage retention rule, one synthetic split-query
 family, fixed full-cache-generated turn-$N$ transcripts, no learned
-selector, and no latency-normalized full-prefix recompute or full
-post-$Q_2$ reselection refresh baseline.
+selector, no latency-normalized full-budget $Q_2$-time reselection
+frontier, and no full-prefix recompute baseline.
 The curves match the resumed active GPU KV budget, not total host-plus-
 device storage, because repair assumes an offloaded evicted-KV store.
 Figure~\ref{fig:policy-breadth} gives accumulated-attention and
@@ -678,11 +697,30 @@ Bai, Y., Lv, X., Zhang, J., Lyu, H., Tang, J., Huang, Z., Du, Z.,
 \newblock In \emph{Proceedings of the 62nd Annual Meeting of the
   Association for Computational Linguistics (ACL)}, 2024.
 
+\bibitem[Chen et~al.(2025)]{pitfalls}
+Chen, A., Geh, R., Grover, A., Van den Broeck, G., and Israel, D.
+\newblock The pitfalls of KV cache compression.
+\newblock \emph{arXiv:2510.00231}, 2025.
+
+\bibitem[Dzikanyanga et~al.(2026)]{ttkv}
+Dzikanyanga, G., Yang, W., Huang, H., Wu, D., Wang, S., Xia, W., and
+  K~C, S.
+\newblock TTKV: Temporal-tiered KV cache for long-context LLM inference.
+\newblock \emph{arXiv:2604.19769}, 2026.
+
 \bibitem[Hsieh et~al.(2024)]{ruler}
 Hsieh, C.-Y., Sun, S., Kriman, S., Acharya, S., Rekesh, D., Jia, F.,
   Zhang, Y., and Ginsburg, B.
 \newblock RULER: What's the real context window size of your LLM?
 \newblock In \emph{Conference on Language Modeling (COLM)}, 2024.
+
+\bibitem[Jimenez et~al.(2024)]{swebench}
+Jimenez, C. E., Yang, J., Wettig, A., Yao, S., Pei, K., Press, O.,
+  and Narasimhan, K.
+\newblock SWE-bench: Can language models resolve real-world GitHub
+  issues?
+\newblock In \emph{International Conference on Learning
+  Representations (ICLR)}, 2024.
 
 \bibitem[Kwon et~al.(2023)]{vllm}
 Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H.,
@@ -734,30 +772,10 @@ Qin, Y., Liang, S., Ye, Y., Zhu, K., Yan, L., Lu, Y., Lin, Y.,
 \newblock In \emph{International Conference on Learning
   Representations (ICLR)}, 2024.
 
-\bibitem[Chen et~al.(2025)]{pitfalls}
-Chen, A., Geh, R., Grover, A., Van den Broeck, G., and Israel, D.
-\newblock The pitfalls of KV cache compression.
-\newblock \emph{arXiv:2510.00231}, 2025.
-
 \bibitem[Qwen(2024)]{qwen}
 Qwen Team.
 \newblock Qwen2.5 technical report.
 \newblock \emph{arXiv:2412.15115}, 2024.
-
-\bibitem[Jimenez et~al.(2024)]{swebench}
-Jimenez, C. E., Yang, J., Wettig, A., Yao, S., Pei, K., Press, O.,
-  and Narasimhan, K.
-\newblock SWE-bench: Can language models resolve real-world GitHub
-  issues?
-\newblock In \emph{International Conference on Learning
-  Representations (ICLR)}, 2024.
-
-\bibitem[Tang et~al.(2024)]{quest}
-Tang, J., Zhao, Y., Zhu, K., Xiao, G., Kasikci, B., and Han, S.
-\newblock QUEST: Query-aware sparsity for efficient long-context LLM
-  inference.
-\newblock In \emph{Proceedings of the 41st International Conference on
-  Machine Learning (ICML)}, 2024.
 
 \bibitem[Sun et~al.(2025)]{shadowkv}
 Sun, H., Chang, L.-W., Bao, W., Zheng, S., Zheng, N., Liu, X., Dong,
@@ -766,26 +784,19 @@ Sun, H., Chang, L.-W., Bao, W., Zheng, S., Zheng, N., Liu, X., Dong,
   LLM inference.
 \newblock \emph{arXiv:2410.21465}, 2025.
 
+\bibitem[Tang et~al.(2024)]{quest}
+Tang, J., Zhao, Y., Zhu, K., Xiao, G., Kasikci, B., and Han, S.
+\newblock QUEST: Query-aware sparsity for efficient long-context LLM
+  inference.
+\newblock In \emph{Proceedings of the 41st International Conference on
+  Machine Learning (ICML)}, 2024.
+
 \bibitem[Xiao et~al.(2024)]{streamingllm}
 Xiao, G., Tang, Y., Zuo, J., Guo, J., Yang, S., Tang, H., Fu, Y.,
   and Han, S.
 \newblock Efficient streaming language models with attention sinks.
 \newblock In \emph{International Conference on Learning Representations
   (ICLR)}, 2024.
-
-\bibitem[Zhang et~al.(2024)]{inftybench}
-Zhang, X., Chen, Y., Hu, S., Xu, Z., Chen, J., Hao, M. K., Han, X.,
-  Thai, Z. L., Wang, S., Liu, Z., and Sun, M.
-\newblock $\infty$Bench: Extending long context evaluation beyond 100K
-  tokens.
-\newblock In \emph{Proceedings of the 62nd Annual Meeting of the
-  Association for Computational Linguistics (ACL)}, 2024.
-
-\bibitem[Dzikanyanga et~al.(2026)]{ttkv}
-Dzikanyanga, G., Yang, W., Huang, H., Wu, D., Wang, S., Xia, W., and
-  K~C, S.
-\newblock TTKV: Temporal-tiered KV cache for long-context LLM inference.
-\newblock \emph{arXiv:2604.19769}, 2026.
 
 \bibitem[Zhang et~al.(2023)]{h2o}
 Zhang, Z., Sheng, Y., Zhou, T., Chen, T., Zheng, L., Cai, R., Song, Z.,
@@ -795,6 +806,20 @@ Zhang, Z., Sheng, Y., Zhou, T., Chen, T., Zheng, L., Cai, R., Song, Z.,
 \newblock In \emph{Advances in Neural Information Processing Systems
   (NeurIPS)}, 2023.
 
+\bibitem[Zhang et~al.(2024)]{inftybench}
+Zhang, X., Chen, Y., Hu, S., Xu, Z., Chen, J., Hao, M. K., Han, X.,
+  Thai, Z. L., Wang, S., Liu, Z., and Sun, M.
+\newblock $\infty$Bench: Extending long context evaluation beyond 100K
+  tokens.
+\newblock In \emph{Proceedings of the 62nd Annual Meeting of the
+  Association for Computational Linguistics (ACL)}, 2024.
+
+\bibitem[Zhang et~al.(2026)]{agentserve}
+Zhang, Y., Yan, Y., Yang, N., and Yuan, D.
+\newblock AgentServe: Algorithm-system co-design for efficient agentic
+  AI serving on a consumer-grade GPU.
+\newblock \emph{arXiv:2603.10342}, 2026.
+
 \bibitem[Zhou et~al.(2024)]{webarena}
 Zhou, S., Xu, F. F., Zhu, H., Zhou, X., Lo, R., Sridhar, A.,
   Cheng, X., Ou, T., Bisk, Y., Fried, D., Alon, U., and Neubig, G.
@@ -803,15 +828,11 @@ Zhou, S., Xu, F. F., Zhu, H., Zhou, X., Lo, R., Sridhar, A.,
 \newblock In \emph{International Conference on Learning
   Representations (ICLR)}, 2024.
 
-\bibitem[Zhang et~al.(2026)]{agentserve}
-Zhang, Y., Yan, Y., Yang, N., and Yuan, D.
-\newblock AgentServe: Algorithm-system co-design for efficient agentic
-  AI serving on a consumer-grade GPU.
-\newblock \emph{arXiv:2603.10342}, 2026.
-
 \end{thebibliography}
 
+\newpage
 \appendix
+\onecolumn
 
 \section{Additional Evaluation Details}
 \label{app:evaluation-details}
