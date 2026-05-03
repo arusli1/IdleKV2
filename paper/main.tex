@@ -557,6 +557,17 @@ component-summed p95 envelope: a chunked GPU selector streams
 Qwen-shaped BF16 key rows from pinned host memory, scores a length-64
 query, selects $K$ rows, and adds the measured 32K-active
 move-and-inject p95 for the same $K$.
+Let $N$ denote offloaded candidate rows, $q$ query tokens, and
+$B_{\mathrm{act}}$ active rows before promotion; the profiled service
+time decomposes as
+\[
+T_{\mathrm{repair}}\!\approx\!
+T_{\mathrm{scan}}(N,q)+T_{\mathrm{topK}}(N,K)+
+T_{\mathrm{promote}}(K,B_{\mathrm{act}}).
+\]
+For a fixed model shape and $q$, candidate scanning is linear in $N$;
+promotion is independent of $N$ but still depends on restored rows and
+the cache-reinsertion path.
 The probe is not a joined end-to-end latency distribution and excludes
 router decisions, remote or disk fetch, queueing, generation, and
 overlap with resumed decoding.
