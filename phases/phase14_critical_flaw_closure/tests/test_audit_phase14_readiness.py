@@ -490,6 +490,29 @@ def test_llama_evaluator_promotes_non_saturated_useful_grid() -> None:
     assert result["useful_k"] == 4
 
 
+def test_llama_evaluator_treats_gold_span_shortfall_as_warning() -> None:
+    rows = [
+        {
+            "k": k,
+            "condition_a": 1.0,
+            "b_match": 0.35,
+            "random_k": 0.36,
+            "oldest_k": 0.35,
+            "idlekv": score,
+            "gold_k": gold,
+            "num_samples": 24,
+        }
+        for k, score, gold in ((24, 0.80, 0.70), (32, 0.89, 0.83), (48, 0.98, 1.0), (64, 1.0, 1.0))
+    ]
+
+    result = smoke_eval.evaluate_llama_rows(rows)
+
+    assert result["status"] == "llama_smoke_pass_run_locked"
+    assert result["useful_k"] == 4
+    assert result["decisions"][0]["warnings"] == ["gold_span_reference_below_idlekv"]
+    assert result["decisions"][0]["failures"] == []
+
+
 def test_selector_evaluator_requires_mid_gain_without_high_loss() -> None:
     rows = [
         {"k": 48, "idlekv": 0.50, "idlekv_coverage": 0.58, "idlekv_mmr": 0.49, "gold_k": 0.90},
@@ -500,3 +523,18 @@ def test_selector_evaluator_requires_mid_gain_without_high_loss() -> None:
 
     assert result["status"] == "selector_smoke_pass"
     assert result["candidates"] == ["coverage"]
+
+
+def test_selector_evaluator_accepts_coverage_only_locked_summary() -> None:
+    rows = [
+        {"k": 48, "idlekv": 0.65, "idlekv_coverage": 0.97, "gold_k": 1.00},
+        {"k": 96, "idlekv": 0.99, "idlekv_coverage": 0.99, "gold_k": 1.00},
+    ]
+
+    result = smoke_eval.evaluate_selector_rows(rows)
+
+    assert result["status"] == "selector_smoke_pass"
+    assert result["candidates"] == ["coverage"]
+    missing = next(item for item in result["decisions"] if item["variant"] == "mmr")
+    assert missing["status"] == "missing"
+    assert missing["failures"] == ["missing_variant_metric"]

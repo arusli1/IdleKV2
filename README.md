@@ -48,8 +48,8 @@ can directly attend to.
 - Main experiments: MQ-NIAH-2Q/4Q/6Q/8Q restore-budget sweeps, next-turn
   specificity controls, a five-turn relevance-shift diagnostic, retention-rule
   sensitivity, and runtime-capacity probes.
-- Breadth checks: a same-protocol Llama-3.1-8B 4Q portability probe and
-  protocol-matched retention-rule variants.
+- Breadth checks: same-protocol Llama-3.1-8B portability probes,
+  protocol-matched retention-rule variants, and active selector variants.
 - Open gap: the current paper is still controlled/synthetic. The repo includes
   a CPU-tested RepoDelta generator for future real-repository relevance-shift
   experiments, but it is not paper evidence until GPU ability and repair smokes
@@ -116,20 +116,26 @@ design, then move to a locked run only after the smoke passes a written gate.
 - `Matched`: no repair under the same resumed active-cache budget.
 - `IdleKV`: restore conditioned on the current next-turn signal from the
   offloaded evicted-KV store.
-- `Gold-K`: benchmark-metadata hindsight reference, not an implementable
-  algorithm.
+- `IdleKV-Coverage`: selector variant that uses the same next-turn scores as
+  `IdleKV` but greedily favors non-overlapping high-value neighborhoods, so it
+  can cover multiple future-relevant spans instead of over-spending the restore
+  budget near one span.
+- `Gold-K`: benchmark-metadata hindsight reference over annotated future-span
+  groups. It is not an implementable algorithm and is not a universal upper
+  bound over all possible K-token repairs.
 - `Random-K` and `Oldest-K`: content-agnostic restore controls.
 - `Refresh-buffered`: reselects the full resumed active budget from active plus
   offloaded rows using the next-turn signal. It is a method-boundary reference,
   not a deployable full-prefix recompute baseline.
-- `Proxy` scoring: cheaper scorer based on appended next-turn state. Treat it
-  as scalable-scorer evidence only when controlled Random-K, Oldest-K, and
-  Gold-K gates pass.
+- `Proxy` scoring: cheaper scorer based on appended next-turn state. The current
+  controlled proxy run preserves the repair effect in MQ-NIAH, but it remains
+  benchmark evidence for a cheaper scoring path rather than a production
+  selector.
 
 ## Active Questions
 
-- Does the controlled proxy scorer preserve the repair effect under Random-K,
-  Oldest-K, and Gold-K controls?
+- Does the Coverage selector generalize beyond the strong 4Q locked result, or
+  should it remain an algorithmic-headroom appendix result?
 - Can the RepoDelta real-repository diagnostic become a credible non-synthetic
   relevance-shift result after full-context GPU smokes?
 - Which selector or retention-policy variants add enough signal to replace an

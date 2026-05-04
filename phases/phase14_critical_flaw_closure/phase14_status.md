@@ -1,6 +1,6 @@
 # Phase 14 Status
 
-Last updated: 2026-05-04 02:21 UTC.
+Last updated: 2026-05-04 03:06 UTC.
 
 ## Implemented
 
@@ -135,12 +135,35 @@ Last updated: 2026-05-04 02:21 UTC.
   claim.
 - Completed the gated calibrated Llama branch at `n=24`, `B=16384`,
   `K={24,32,48,64}` on MQ-NIAH-6Q. The evaluator marked it as pass/run-locked;
-  useful K points are `48` and `64`, while `K=24/32` exceed the span-group
-  \goldk{} reference and should not be used without a short explanation.
+  all four K points are useful for the Llama portability check, while `K=24/32`
+  exceed the span-group \goldk{} reference and therefore need the explicit
+  "Gold-K is not an upper bound" explanation.
 - Completed the selector-variant branch at `n=24`, `K={24,48,96}` on MQ-NIAH-4Q.
   Coverage passed the selector gate (`+0.431` over current \idlekv{} at
   `K=48`, no high-K loss); MMR was rejected. This is promising algorithmic
   evidence, but it has not yet been promoted into the paper.
+- Audited the low-K Llama case where \idlekv{} exceeds \goldk{}. The raw rows
+  have no budget violations and the span-group reference is monotone in `K`.
+  The issue is semantic rather than corruption: in `gold_spans` mode \goldk{}
+  enumerates annotated Q2 span-group subsets and may restore fewer than `K`
+  tokens, while \idlekv{} can spend the full budget on useful local
+  neighborhoods. Therefore \goldk{} must remain a benchmark-metadata reference,
+  not an upper bound or a required ceiling.
+- Added `run_selector_variant_6q_locked.sh` and completed the locked 6Q Coverage
+  check in tmux after a positive-but-mixed 6Q smoke. The locked run passed the
+  selector gate: at `K=48`, Coverage scored `0.972` versus current \idlekv{}
+  `0.667` and matched no-repair `0.434`; at `K=96`, Coverage tied \idlekv{}
+  at `0.986`. Raw artifact audit found no restore-count, selected-position, or
+  duplicate-position violations. This makes Coverage important algorithmic
+  headroom, but it still needs a dedicated 4Q/6Q K-grid before promotion as a
+  main-paper selector figure.
+- Updated the Phase 14 smoke evaluator so a Gold-span reference below \idlekv{}
+  is emitted as a warning rather than a run failure. This preserves the audit
+  signal without conflating a constrained reference-family shortfall with a
+  corrupt run.
+- Copied compact locked summaries for the Llama 6Q check and Coverage selector
+  checks into `paper/figures/` so paper-facing evidence does not depend only on
+  ignored local phase-result directories.
 
 ## Validation
 
@@ -227,6 +250,25 @@ Last updated: 2026-05-04 02:21 UTC.
     boxes.
 - `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py phases/phase13_iteration_framework/tests/test_paper_language.py phases/phase9_experiment_deepening/tests/test_paper_figure_renderer.py -q`
   - `27 passed` at the end of the queued closure.
+- `.venv/bin/python -m pytest phases/phase6_repair/tests/test_selectors.py phases/phase6_repair/tests/test_runner.py phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py`
+  - `46 passed` after the Gold-K/Coverage audit.
+- `bash -n phases/phase14_critical_flaw_closure/scripts/run_selector_variant_6q_locked.sh`
+- `.venv/bin/python -m pytest phases/phase6_repair/tests/test_selectors.py phases/phase6_repair/tests/test_runner.py`
+  - `31 passed` before launching the 6Q Coverage locked run.
+- `.venv/bin/python -m py_compile phases/phase14_critical_flaw_closure/scripts/evaluate_phase14_smokes.py`
+- `.venv/bin/python -m pytest phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py`
+  - `16 passed` after changing Gold-span shortfall from failure to warning.
+- `.venv/bin/python -m pytest phases/phase9_experiment_deepening/tests/test_paper_figure_renderer.py phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py -q`
+  - `29 passed` after making the renderer prefer committed Llama 6Q data and
+    adding the Coverage-only selector evaluator test.
+- `../.venv/bin/python scripts/render_paper_figures.py` and
+  `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` from `paper/`
+  - rebuilt `paper/main.pdf` after the Llama data-source and terminology edits;
+  - log scan found no undefined citations, undefined references, fatal errors,
+    or overfull boxes.
+- `.venv/bin/python phases/phase14_critical_flaw_closure/scripts/evaluate_phase14_smokes.py --kind selector --summary-csv phases/phase14_critical_flaw_closure/results/selector_variant_6q_locked_n24_b18432.csv`
+  - `coverage` returned `selector_variant_candidate`; `mid_gain_vs_idlekv=0.305555`,
+    `high_loss_vs_idlekv=0.0`, `mid_gold_gap_closure=0.916666`.
 
 ## Paper Economy Audit
 
@@ -261,8 +303,10 @@ The reviewer holes that remain material are:
   locked run or paper claim.
 - Broader generality: current Llama and retention-rule evidence are targeted
   breadth checks, not enough for a broad model-family or named-policy claim.
-- Algorithmic headroom: Refresh-buffered and Gold-K show that IdleKV is a
-  useful promotion primitive, not the final selector.
+- Algorithmic selection gap: Refresh-buffered and the Coverage selector show that
+  IdleKV is a useful promotion primitive, not the final selector. Gold-K is a
+  benchmark-metadata span-group reference, so it should support interpretation
+  but not be described as a universal upper bound.
 - Off-device retention policy: the paper now states the two-level retention
   problem explicitly, but it does not solve how a long-running agent should
   choose which evicted rows remain searchable, compressed, summarized, or

@@ -238,7 +238,9 @@ Use paper-facing terminology, not internal repo terminology.
 - "proxy/exact gain ratio": preferred term for fixed-K proxy/exact comparisons.
   Define it as `(Proxy - matched no-repair)/(Exact - matched no-repair)`.
 - "`Gold-K` benchmark-metadata hindsight reference": acceptable if defined.
-  Do not call it "oracle" in prose.
+  Do not call it "oracle" in prose, and do not imply it is an upper bound over
+  all possible K-token repairs. It is exact only over the annotated span-group
+  candidate family used by the benchmark.
 - "H2O-inspired accumulated-attention retention": use this wording for the
   current accumulated-attention policy branch unless the implementation exactly
   reproduces canonical H2O accumulated decode attention. Do not write
@@ -397,10 +399,11 @@ Target main visual package:
    shortened axis label such as Refresh is acceptable only if the caption
    defines it.
 4. Operating-regime heatmap in the main text only while it replaces weaker
-   prose and answers "where does repair help?" Use normalized recovery,
-   `IdleKV gain / Gold-K gain`, so the plot separates repair effectiveness
-   from raw benchmark headroom. Demote it to appendix if a stronger
-   specificity or multi-turn figure needs the main-text slot.
+   prose and answers "where does repair help?" Use normalized recovery against
+   the Gold-K span-group reference only when the denominator is positive and
+   the caption states that Gold-K is not a universal upper bound. Demote it to
+   appendix if a stronger specificity or multi-turn figure needs the main-text
+   slot.
 5. Multi-turn relevance-shift trajectory if the locked run passes the
    numerical gate and paired uncertainty is available. The main plot should
    show IdleKV, StaleQ-K, Gold-K, and a Random-K/Oldest-K band, with revisit
@@ -505,15 +508,20 @@ IdleKV-specific figure rules:
   appendix breadth.
 - For multi-turn diagnostics: promote only locked runs, not smokes. Prefer raw
   exact score when a Gold-K/reference marker is shown, so the reference remains
-  visually interpretable as the upper benchmark-metadata score. If using gain
-  over matched no-repair, omit or clearly remap references. The main diagnostic
-  must include StaleQ-K if the claim is dynamic next-turn adaptation; otherwise
-  reviewers can attribute the effect to stale query reuse. If CurrentQOnly-K
-  and StaleQOnly-K diagnostics are present, require current-query-only repair
-  to separate from stale-query-only repair before promoting the result.
+  visually interpretable as a benchmark-metadata span-group score rather than a
+  universal upper bound. If using gain over matched no-repair, omit or clearly
+  remap references. The main diagnostic must include StaleQ-K if the claim is
+  dynamic next-turn adaptation; otherwise reviewers can attribute the effect to
+  stale query reuse. If CurrentQOnly-K and StaleQOnly-K diagnostics are present,
+  require current-query-only repair to separate from stale-query-only repair
+  before promoting the result.
 - For cross-model evidence: require a full-cache/matched ability gate and a
   cache round-trip check before any repair comparison. Failed small-model
   ability checks belong in notes, not in the main paper.
+- For any paper-facing figure, make the compact data source reproducible from
+  committed files. When an ignored phase result becomes paper evidence, copy the
+  summary CSV into `paper/figures/` and make the renderer prefer that committed
+  copy over local phase outputs.
 - Each figure must answer one reviewer question:
   - Does repair beat matched no-repair?
   - When does repair help or disappear?
@@ -529,7 +537,7 @@ Current Phase 10 gate:
 
 - `K=48` is the locked specificity operating point because the `n=1` smoke
   separates IdleKV from stale and donor wrong-query controls while leaving
-  Gold-K headroom.
+  a visible matched-to-Gold-K reference gap.
 - `K=96` should not anchor next-turn specificity because the smoke showed
   stale-query catching up.
 - If the locked run keeps `IdleKV > StaleQ-K` and `IdleKV > WrongQ-K` but
@@ -811,9 +819,9 @@ Figure and diagram rules:
   Random-K/Oldest-K control-gain range.
 - Do not promote a first-stage-policy figure on a single good endpoint.
   Sink-plus-recent retention needs a clean multi-point frontier with controls
-  pinned near matched no-repair and Gold-K covering IdleKV. If it is only
-  endpoint-positive or noisy, leave prior-policy variants as appendix
-  robustness and future-benchmark evidence.
+  pinned near matched no-repair and a clearly defined Gold-K span-group
+  reference. If it is only endpoint-positive or noisy, leave prior-policy
+  variants as appendix robustness and future-benchmark evidence.
 - Before any result enters the main text, run the Phase 13 result-rigor gate:
   full run rather than smoke, paired/shared examples, enough K-grid points,
   audited matched active-cache budget, strong full-cache reference, clean

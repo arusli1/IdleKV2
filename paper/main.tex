@@ -416,8 +416,8 @@ while matched no-repair scores $0.245$, $0.422$, and $0.546$,
 respectively.
 This shows that generic reinsertion from the same offloaded evicted-KV
 store does not explain the effect.
-The $\goldk$ reference shows remaining benchmark-metadata selection
-headroom at intermediate budgets, especially on MQ-NIAH-6Q at $K=48$
+The $\goldk$ reference shows the remaining benchmark-metadata span gap
+at intermediate budgets, especially on MQ-NIAH-6Q at $K=48$
 ($0.994$ versus $0.653$ for \idlekv{} in absolute score).
 \begin{figure}[t]
   \centering
@@ -472,8 +472,8 @@ On a fixed five-turn MQ-NIAH-8Q revisit schedule ($K=80$, $n=24$),
 paired bootstrap interval $[0.458,0.620]$; Random-$K$ and Oldest-$K$
 gain only $0.010$ and $0.021$.
 The strongest effect appears on the revisit turn; Turn 3 is retained as
-an internal no-headroom control because matched no-repair already reaches
-the \goldk{} reference.
+an internal saturated-reference control because matched no-repair already
+reaches the \goldk{} reference.
 A current-query-only audit matches \idlekv{}, while stale-query-only
 repair recovers part of the gap but remains clearly below current-query
 repair.
@@ -489,7 +489,7 @@ trace-based agent benchmarks.
   and \goldk{}. Blue intervals are bootstrap $95\%$ confidence
   intervals for \idlekv{}; Stale-Q uses the previous-turn query, and
   Rand/old summarizes the Random-$K$ and Oldest-$K$ controls. Turn 3 has
-  no matched-to-\goldk{} headroom.}
+  no matched-to-\goldk{} reference gap.}
   \label{fig:multiturn}
 \end{figure}
 
@@ -531,10 +531,11 @@ The minimum score gain over $\bmatch$ is $0.585$ for MQ-NIAH-4Q and
 $0.387$ for MQ-NIAH-6Q, and $0.292$ for MQ-NIAH-8Q.
 Appendix Figure~\ref{fig:app-partition-endpoints} gives the
 per-partition endpoints.
-A same-protocol Llama-3.1-8B 4Q K-grid gives a non-saturated
-portability check rather than a model-family claim: with $n{=}24$,
-\idlekv{} improves from $\bmatch=0.479$ to $0.944$ at $K=24$
-and reaches $1.000$ at $K=64$.
+A same-protocol Llama-3.1-8B 6Q check gives a non-saturated
+portability check rather than a model-family claim: with $n{=}24$ and
+$B=16{,}384$, \idlekv{} improves from $\bmatch\approx0.36$ to
+$0.80/0.90/0.98/1.00$ at $K=24/32/48/64$, while Random-$K$/Oldest-$K$
+remain near $\bmatch$.
 
 The restored tokens also move the final active cache toward the annotated
 $Q_2$ gold spans.
@@ -556,7 +557,7 @@ In the locked controlled proxy frontier
 (Appendix Figure~\ref{fig:app-proxy-controlled}), proxy \idlekv{} still
 separates from matched no-repair and content-agnostic restores: at
 $K=96$, it scores $0.970$/$0.894$ on 4Q/6Q versus $\bmatch$
-$0.245$/$0.422$, while Random-$K$/Oldest-$K$ lift by at most
+$0.245$/$0.422$, while Random-$K$/Oldest-$K$ improve by at most
 $0.010$/$0.004$ over $\bmatch$.
 The readiness audit retains $1.09{\times}$/$0.83{\times}$ of the exact
 $K=96$ repair gain for 4Q/6Q, so the proxy is evidence for a cheaper
@@ -673,9 +674,9 @@ how quickly eviction failures accumulate.
 The five-turn diagnostic in Figure~\ref{fig:multiturn} strengthens
 the dynamic-workflow evidence, but it remains synthetic and a stale
 previous-query scorer still closes part of the gap.
-The current selector also leaves visible gap to $\goldk$ at moderate $K$,
-which motivates stronger selection rules and broader task families with
-the same matched-budget controls.
+The current selector also leaves visible gap to the $\goldk$ reference at
+moderate $K$, which motivates stronger selection rules and broader task
+families with the same matched-budget controls.
 
 % -----------------------------------------------------------------------
 \section{Conclusion}
@@ -914,6 +915,10 @@ subset once under actual $Q_2$ generation, and chooses the
 highest-scoring subset with total cost at most $K$.
 It is exact over this benchmark-specific span-group family, but not over
 all arbitrary token subsets or possible final generations.
+Because the selected span-group subset may use fewer than $K$ rows, a
+repair selector can occasionally score higher at low budgets by
+spending the full budget on useful local neighborhoods around the
+future-relevant spans.
 
 \paragraph{Partition choices.}
 For MQ-NIAH-4Q, the pooled panel uses
@@ -965,11 +970,12 @@ duplicated as wide tables.
   \includegraphics[width=\columnwidth]{figures/operating_regime_heatmap.pdf}
   \caption{Operating-regime heatmap for the final exact $Q_2$
   evaluations ($n{=}24$ per setting). Cells show the fraction of
-  available $\goldk{}$ headroom recovered by \idlekv{}, clipped to
+  available $\goldk{}$ reference gain recovered by \idlekv{}, clipped to
   $[0,1]$: $(S_{\mathrm{IdleKV}}-S_{\bmatch})/
   (S_{\goldk{}}-S_{\bmatch})$, averaged over pooled balanced splits for
-  MQ-NIAH-4Q and MQ-NIAH-6Q. Cells with little remaining $\goldk{}$
-  headroom should be read as saturation diagnostics.}
+  MQ-NIAH-4Q and MQ-NIAH-6Q. Cells with little remaining
+  matched-to-\goldk{} reference gap should be read as saturation
+  diagnostics.}
   \label{fig:app-operating-regime}
 \end{figure}
 }{}
@@ -1019,7 +1025,7 @@ duplicated as wide tables.
   \begin{minipage}[t]{0.47\textwidth}
     \centering
     \includegraphics[width=\linewidth]{figures/model_transfer_breadth.pdf}
-    \centerline{\small (a) Same-protocol Llama 4Q check}
+    \centerline{\small (a) Same-protocol Llama 6Q check}
   \end{minipage}
   \hfill
   \begin{minipage}[t]{0.47\textwidth}
@@ -1028,8 +1034,9 @@ duplicated as wide tables.
     \centerline{\small (b) Fixed-$K$ scorer-latency probe}
   \end{minipage}
   \caption{Supplementary portability and scorer-latency diagnostics.
-  Left: Llama-3.1-8B-Instruct same-protocol 4Q check, with the gray band
-  spanning matched no-repair and content-agnostic restores. Right:
+  Left: Llama-3.1-8B-Instruct same-protocol 6Q check, with the gray band
+  spanning matched no-repair and content-agnostic restores; \goldk{} is
+  the span-group reference, not an upper bound. Right:
   fixed-$K$ exact/proxy scorer probe; in paired $n{=}100$, $K=96$
   probes, the proxy remains above matched no-repair while reducing p50
   total scorer latency from 6.38\,s to 0.83\,s on 4Q and from

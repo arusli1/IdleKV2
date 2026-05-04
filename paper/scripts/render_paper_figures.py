@@ -395,7 +395,7 @@ def render_operating_regime_heatmap() -> bool:
     axes[0].tick_params(labelbottom=False)
 
     cbar = fig.colorbar(im, ax=axes, fraction=0.05, pad=0.035)
-    cbar.set_label("Gold-K headroom closed", labelpad=2.0)
+    cbar.set_label("Gold-K ref. gap closed", labelpad=2.0)
     cbar.outline.set_linewidth(0.45)
     cbar.ax.tick_params(width=0.45, length=2.0, pad=1.2)
     save_figure(fig, "operating_regime_heatmap")
@@ -2430,6 +2430,8 @@ def _model_transfer_candidate_paths() -> list[Path]:
     """Return cross-model artifacts in paper-readiness order."""
 
     return [
+        FIGURE_DIR / "llama31_8b_6q_locked_n24_b16384_k24-32-48-64.csv",
+        PHASE14_DIR / "llama_calibrated_locked_n24_b16384.csv",
         FIGURE_DIR / "llama31_8b_4q_fullgrid_n24.csv",
         PHASE11_DIR / "llama31_8b_4q_fullgrid_n24.csv",
         FIGURE_DIR / "llama31_8b_6q_locked_n12_b18432_k64-96-128.csv",
@@ -2571,7 +2573,7 @@ def render_policy_breadth_delta() -> bool:
     ax.set_yticks([0.0, 0.4, 0.8])
     ax.grid(axis="x", visible=False)
     band_handles = [
-        Patch(facecolor=PALETTE["gold"], alpha=0.18, edgecolor=PALETTE["gold"], linewidth=0.35, label="Gold-K range"),
+        Patch(facecolor=PALETTE["gold"], alpha=0.18, edgecolor=PALETTE["gold"], linewidth=0.35, label="Gold-K ref. range"),
         Patch(facecolor="#A9A9A9", alpha=0.28, edgecolor="#7D7D7D", linewidth=0.35, label="Rand/old range"),
     ]
     ax.legend(

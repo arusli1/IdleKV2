@@ -176,10 +176,11 @@ def test_proxy_controlled_renderer_prefers_phase14_locked_csv(tmp_path, monkeypa
 
 def test_model_transfer_candidates_prefer_non_saturated_full_grid(tmp_path, monkeypatch) -> None:
     figure_dir = tmp_path / "figures"
+    phase14_dir = tmp_path / "phase14"
     phase11_dir = tmp_path / "phase11"
     phase13_dir = tmp_path / "phase13"
     phase10_dir = tmp_path / "phase10"
-    for path in (figure_dir, phase11_dir, phase13_dir, phase10_dir):
+    for path in (figure_dir, phase14_dir, phase11_dir, phase13_dir, phase10_dir):
         path.mkdir()
 
     stale_short_grid = figure_dir / "llama31_8b_6q_locked_n12_b18432_k64-96-128.csv"
@@ -188,6 +189,7 @@ def test_model_transfer_candidates_prefer_non_saturated_full_grid(tmp_path, monk
     preferred_full_grid.write_text("preferred\n", encoding="utf-8")
 
     monkeypatch.setattr(renderer, "FIGURE_DIR", figure_dir)
+    monkeypatch.setattr(renderer, "PHASE14_DIR", phase14_dir)
     monkeypatch.setattr(renderer, "PHASE11_DIR", phase11_dir)
     monkeypatch.setattr(renderer, "PHASE13_DIR", phase13_dir)
     monkeypatch.setattr(renderer, "PHASE10_DIR", phase10_dir)
@@ -196,6 +198,34 @@ def test_model_transfer_candidates_prefer_non_saturated_full_grid(tmp_path, monk
     chosen = next(path for path in candidates if path.exists())
 
     assert chosen == preferred_full_grid
+
+
+def test_model_transfer_candidates_prefer_tracked_llama_before_phase14(tmp_path, monkeypatch) -> None:
+    figure_dir = tmp_path / "figures"
+    phase14_dir = tmp_path / "phase14"
+    phase11_dir = tmp_path / "phase11"
+    phase13_dir = tmp_path / "phase13"
+    phase10_dir = tmp_path / "phase10"
+    for path in (figure_dir, phase14_dir, phase11_dir, phase13_dir, phase10_dir):
+        path.mkdir()
+
+    preferred = figure_dir / "llama31_8b_6q_locked_n24_b16384_k24-32-48-64.csv"
+    phase14_candidate = phase14_dir / "llama_calibrated_locked_n24_b16384.csv"
+    fallback = phase11_dir / "llama31_8b_4q_fullgrid_n24.csv"
+    preferred.write_text("preferred\n", encoding="utf-8")
+    phase14_candidate.write_text("phase14\n", encoding="utf-8")
+    fallback.write_text("fallback\n", encoding="utf-8")
+
+    monkeypatch.setattr(renderer, "FIGURE_DIR", figure_dir)
+    monkeypatch.setattr(renderer, "PHASE14_DIR", phase14_dir)
+    monkeypatch.setattr(renderer, "PHASE11_DIR", phase11_dir)
+    monkeypatch.setattr(renderer, "PHASE13_DIR", phase13_dir)
+    monkeypatch.setattr(renderer, "PHASE10_DIR", phase10_dir)
+
+    candidates = renderer._model_transfer_candidate_paths()
+    chosen = next(path for path in candidates if path.exists())
+
+    assert chosen == preferred
 
 
 def test_policy_breadth_renderer_requires_streamingllm_full_grid(tmp_path, monkeypatch) -> None:

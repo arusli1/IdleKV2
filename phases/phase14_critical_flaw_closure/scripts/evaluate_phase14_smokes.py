@@ -64,6 +64,7 @@ def evaluate_refresh_rows(
         idle_vs_wrong = idle - wrong
         refresh_vs_idle = refresh - idle
         failures: list[str] = []
+        warnings: list[str] = []
         if idle_gain < min_idle_gain:
             failures.append("weak_idlekv_gain")
         if idle_vs_stale < min_stale_gap:
@@ -71,7 +72,7 @@ def evaluate_refresh_rows(
         if idle_vs_wrong < min_wrong_gap:
             failures.append("weak_donor_query_separation")
         if gold + 1e-9 < idle:
-            failures.append("gold_reference_below_idlekv")
+            warnings.append("gold_span_reference_below_idlekv")
         if refresh_vs_idle > refresh_boundary_gap:
             failures.append("refresh_k_is_stronger")
 
@@ -100,6 +101,7 @@ def evaluate_refresh_rows(
                 "gold_headroom": round(gold - idle, 6),
                 "action": action,
                 "failures": failures,
+                "warnings": warnings,
             }
         )
 
@@ -145,6 +147,7 @@ def evaluate_llama_rows(
         gold = _float(row, "gold_k", idle)
         best_control = max(random_k, oldest_k)
         failures: list[str] = []
+        warnings: list[str] = []
         if full < min_full_score:
             failures.append("full_context_not_reliable")
         if full - matched < min_matched_gap:
@@ -154,7 +157,7 @@ def evaluate_llama_rows(
         if idle - best_control < min_control_gap:
             failures.append("content_agnostic_controls_too_close")
         if gold + 1e-9 < idle:
-            failures.append("gold_reference_below_idlekv")
+            warnings.append("gold_span_reference_below_idlekv")
         decisions.append(
             {
                 "k": _int(row, "k", -1),
@@ -167,6 +170,7 @@ def evaluate_llama_rows(
                 "idlekv_gain": round(idle - matched, 6),
                 "idlekv_minus_best_control": round(idle - best_control, 6),
                 "failures": failures,
+                "warnings": warnings,
             }
         )
 
