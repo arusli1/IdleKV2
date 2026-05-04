@@ -92,6 +92,7 @@ def test_repodelta_base_has_distinct_turns_without_tool_answer_leak(tmp_path: Pa
     assert q1["path"] != q2["path"]
     assert example.outputs == [q1["answer"], q2["answer"]]
     assert example.context.count(str(q2["answer"])) == 1
+    assert f"{int(q2['line_no']):04d}:" in example.context
     assert str(q2["answer"]) not in str(example.metadata["tool_event"])
     assert {span.name for span in example.relevant_spans} == {"repo_fact_1", "repo_fact_2"}
     for span in example.relevant_spans:
@@ -100,7 +101,7 @@ def test_repodelta_base_has_distinct_turns_without_tool_answer_leak(tmp_path: Pa
         assert str(span.metadata["line_text"]) in sliced
 
 
-def test_repodelta_turn_projection_uses_tool_event_only_for_q2(tmp_path: Path) -> None:
+def test_repodelta_turn_projection_uses_event_localized_q2(tmp_path: Path) -> None:
     _write_repo(tmp_path)
     base = build_repodelta_base_example(
         repo_root=tmp_path,
@@ -114,9 +115,15 @@ def test_repodelta_turn_projection_uses_tool_event_only_for_q2(tmp_path: Path) -
 
     assert "Tool event:" not in q1.question
     assert "Tool event:" in q2.question
+    assert "reported failure location" in q2.question
+    assert f"In `{base.metadata['q2']['path']}`" not in q2.question
+    assert f"line {base.metadata['q2']['line_no']}?" not in q2.question
     assert q1.outputs == [base.metadata["q1"]["answer"]]
     assert q2.outputs == [base.metadata["q2"]["answer"]]
     assert str(base.metadata["q2"]["answer"]) not in q2.question
+    assert q2.metadata["repair_cue"] in q2.question
+    assert q2.metadata["repair_signal_mode"] == "event_only"
+    assert q2.metadata["decode_prompt_mode"] == "event_plus_q2"
 
 
 def test_repodelta_prepared_maps_q2_span_to_tokens(tmp_path: Path) -> None:

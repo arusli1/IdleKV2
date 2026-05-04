@@ -50,10 +50,10 @@ can directly attend to.
   sensitivity, and runtime-capacity probes.
 - Breadth checks: same-protocol Llama-3.1-8B portability probes,
   protocol-matched retention-rule variants, and active selector variants.
-- Open gap: the current paper is still controlled/synthetic. The repo includes
-  a CPU-tested RepoDelta generator for future real-repository relevance-shift
-  experiments, but it is not paper evidence until GPU ability and repair smokes
-  pass the written gates.
+- Open gap: the current paper is still controlled/synthetic. Phase 15 now tracks
+  a stricter RepoDelta-Edge plan for real-repository relevance-shift evidence,
+  but it is not paper evidence until frozen-manifest CPU gates, GPU ability
+  smokes, and repair smokes pass the written gates.
 
 ## Paper
 
@@ -104,8 +104,10 @@ design, then move to a locked run only after the smoke passes a written gate.
 - `phases/phase6_repair/`: core matched-budget repair protocol, selectors,
   reporting, and unit tests.
 - `phases/phase9_experiment_deepening/` through
-  `phases/phase14_critical_flaw_closure/`: experiment expansions, smoke
-  evaluators, locked-run wrappers, and paper-readiness audits.
+  `phases/phase14_critical_flaw_closure/`: completed experiment expansions,
+  smoke evaluators, locked-run wrappers, and paper-readiness audits.
+- `phases/phase15_real_repo_relevance_shift/`: active plan for the RepoDelta-Edge
+  real-repository relevance-shift diagnostic.
 - `docs/`: project status and result-retention notes.
 - `saved_results/`: retained summaries from earlier runs.
 - `models/`: local model weights; ignored by git.
@@ -135,10 +137,10 @@ design, then move to a locked run only after the smoke passes a written gate.
 
 ## Active Questions
 
-- Does the Coverage selector generalize beyond the strong 4Q/6Q locked checks,
-  or should it remain an algorithmic-selection-gap appendix result?
-- Can the RepoDelta real-repository diagnostic become a credible non-synthetic
-  relevance-shift result after full-context GPU smokes?
+- Can the Phase 15 RepoDelta-Edge diagnostic become credible non-synthetic
+  relevance-shift evidence after frozen-manifest CPU gates and GPU smokes?
+- Does the Coverage selector deserve a future full K-grid, or should it remain
+  algorithmic-selection-gap appendix/future-work evidence?
 - Which selector or retention-policy variants add enough signal to replace an
   existing figure rather than simply append another one?
 - What trace-scheduled repair experiment best connects the runtime-capacity

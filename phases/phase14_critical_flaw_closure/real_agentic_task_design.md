@@ -1,104 +1,60 @@
-# Real Agentic Diagnostic Design
+# Real-Repository Diagnostic Design
 
-This note turns the "one real agentic task" gap into an executable experiment.
-It should not be run until the active proxy scorer run is finished or idle GPU
-capacity is clearly available.
+This note records the Phase 14 scaffold that led to Phase 15. The active plan is
+now maintained in `phases/phase15_real_repo_relevance_shift/phase15_plan.md`.
 
 ## Reviewer Question
 
 Does pre-resume KV repair help when the next turn is driven by a realistic
-workflow event, not only by synthetic MQ-NIAH question text?
+repository cue rather than synthetic MQ-NIAH question text?
 
-The target evidence is not full SWE-bench or WebArena task success. The target
-is a narrower trace diagnostic: after a tool-like event shifts relevance to a
-different part of a real code context, does IdleKV restore the needed context
-better than matched no-repair and content-agnostic restore controls?
+The target evidence is not SWE-bench, WebArena, patch generation, or tool-use
+success. The target is a controlled mechanism diagnostic: after a repository cue
+shifts relevance to a different region of an already-seen context, can IdleKV
+restore the needed evicted rows better than matched no-repair and
+content-agnostic restore controls?
 
-## Candidate Task: RepoDelta-Retrieval
+## Current Status
 
-Use real repository files as the long context and synthetic but verifiable
-questions over exact spans in those files.
+The original RepoDelta-Retrieval scaffold generated exact identifier questions
+from real repository file cards. Expert audit found that the path/line variant
+is too close to line lookup for a main-paper claim. It remains useful for CPU
+tests and full-context ability smokes, but the paper-facing Phase 15 candidate
+is now RepoDelta-Edge.
 
-One example has:
+RepoDelta-Edge should use a Python-only, one-hop static relation such as
+`anchor function + callsite -> leaf callee identifier`. The cue names the
+repository event or implicated region without leaking the answer. Q2 asks for a
+short exact identifier from the already-rendered context.
 
-- `context`: concatenated file cards from a real repository, with each card
-  containing path, language, and source text.
-- `Q1`: asks for an exact identifier, string literal, or configuration value in
-  one file group.
-- `tool event`: a short appended message such as "pytest failed in
-  `path/to/file.py`; inspect `function_or_symbol`".
-- `Q2`: asks for an exact identifier/value from a different file group named by
-  the tool event.
-- `gold spans`: token spans for the Q2 file/symbol region.
+## Mechanism Constraint
 
-This is still controlled, but it uses real code/document tokens and a
-tool-result-like relevance shift. It should be described as a realistic-content
-diagnostic, not as end-to-end agent validation.
+Paper-facing Phase 15 evidence must separate the repair cue from the downstream
+question:
 
-## Minimal Implementation
+1. Prefill the frozen repository context.
+2. Instantiate the post-Q1 active cache and offloaded warm store.
+3. Score evicted rows using only the pre-turn-2 event cue.
+4. Restore K rows.
+5. Decode the same final `event + Q2` prompt for all conditions.
 
-1. Add a small generator that emits `TaskExample` records from real repository
-   files.
-2. Reuse the Phase 6 two-turn protocol by adding a task alias whose Q1/Q2 spans
-   point at different real file cards.
-3. Treat the tool event as part of the turn-`N+1` relevance signal, appended
-   before Q2 scoring and decoding.
-4. Keep answer scoring exact-match over short outputs, as in MQ-NIAH, so the
-   metric remains auditable.
+The existing Phase 6 path scores with the full Q2 prompt, so Phase 15 needs a
+dedicated event-only cue path before any main-paper GPU run. If only a full-Q2
+repair path is run, the result must be described as next-turn-prompt-conditioned
+repair, not tool-event-conditioned repair.
 
-## Unit Tests Before GPU
+## Required CPU Gates
 
-- The generator produces unique Q1 and Q2 answer strings.
-- Q1 and Q2 spans come from different file cards.
-- The Q2 answer string appears in the rendered context exactly once.
-- Character spans map to nonempty token positions after chat-template rendering.
-- The tool event text names the Q2 file or symbol and does not contain the Q2
-  answer itself.
-- The task can be generated under the intended context-length budget.
-
-## Smoke Run
-
-Run only after the unit tests pass.
-
-- Model: Qwen2.5-7B-Instruct.
-- Context: 32K.
-- Samples: `n=2` or `n=3`.
-- Restore budgets: `K={48,96}`.
-- Conditions: `A/B/B_match/Random-K/Oldest-K/IdleKV/Oracle-K`.
-- Scorer: exact Q2/tool-event signal first; proxy only after exact behavior is
-  understood.
-
-Smoke passes only if:
-
-- full-context score is at least `0.80`;
-- matched no-repair is at least `0.15` below full context;
-- IdleKV beats matched and both content-agnostic controls at one or more K;
-- Gold-K covers IdleKV;
-- failures are not caused by answer-format truncation or duplicate answer
-  strings.
-
-## Locked Run If Smoke Passes
-
-- Samples: `n=20-30`, depending on smoke variance.
-- Restore budgets: `K={32,48,64,96,128}`.
-- Same conditions as smoke.
-- Bootstrap confidence intervals for IdleKV and matched no-repair.
-
-The target paper object is one compact one-column plot or a short main-text
-sentence plus appendix plot. It should replace weaker future-work prose rather
-than add clutter.
+- Pinned third-party repository snapshots and frozen manifests.
+- Strict identifier scoring, not substring or case-insensitive matching.
+- Tokenizer-aware rendered-length, span, uniqueness, and tail-leakage audits.
+- Q1/Q2 from different files or regions.
+- Q2 answer absent from the cue and final question text.
+- Gold answer appears exactly once in the rendered context.
+- Stale-cue and wrong-event controls available for repair specificity.
 
 ## Promotion Gate
 
-Main-paper promotion requires:
-
-- a distinct workflow claim: tool/repo-style relevance shift, not another
-  MQ-NIAH-shaped query split;
-- full-context ability and nontrivial matched no-repair gap;
-- IdleKV improvement over Random-K and Oldest-K;
-- at least `n=20`;
-- a caption that states this is a controlled trace diagnostic, not end-to-end
-  SWE-bench/WebArena success.
-
-If any gate fails, keep the paper's current limitation language and move this to
-future work or an appendix negative result.
+Promote only a clean locked Phase 15 result. If RepoDelta-Edge fails and the
+line-location fallback is merely positive, keep it in appendix or future-work
+notes rather than weakening the main paper.

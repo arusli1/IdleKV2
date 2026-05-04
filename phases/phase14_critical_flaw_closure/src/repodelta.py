@@ -159,7 +159,10 @@ def _read_text(path: Path) -> str | None:
 
 
 def _file_card(rel_path: str, text: str) -> str:
-    return f"--- FILE: {rel_path} ---\n{text.rstrip()}\n"
+    numbered = "\n".join(
+        f"{line_no:04d}: {line}" for line_no, line in enumerate(text.rstrip().splitlines(), start=1)
+    )
+    return f"--- FILE: {rel_path} ---\n{numbered}\n"
 
 
 def _line_char_bounds(card_start: int, card: str, line_no: int) -> tuple[int, int]:
@@ -306,16 +309,19 @@ def _candidate_metadata(candidate: RepoDeltaCandidate) -> dict[str, object]:
 def _tool_event(candidate: RepoDeltaCandidate) -> str:
     return (
         "Tool event: a follow-up check failed while executing repository code in "
-        f"`{candidate.path}`. Inspect that file before answering."
+        f"`{candidate.path}` at line {candidate.line_no}. Inspect that location before answering."
     )
 
 
 def _repo_question(candidate: RepoDeltaCandidate, *, turn: str) -> str:
-    prefix = ""
     if turn == "q2":
-        prefix = _tool_event(candidate) + "\n\n"
+        return (
+            _tool_event(candidate)
+            + "\n\n"
+            + f"What is the {candidate.kind} name at the reported failure location? "
+            + "Respond with the identifier only."
+        )
     return (
-        prefix +
         f"In `{candidate.path}`, what is the {candidate.kind} name on line "
         f"{candidate.line_no}? Respond with the identifier only."
     )
@@ -332,22 +338,24 @@ def split_repodelta_for_turn(
         raise ValueError(f"Unsupported RepoDelta turn: {turn}")
     candidate = base_example.metadata[turn]
     answer = str(candidate["answer"])
-    question = _repo_question(
-        RepoDeltaCandidate(
-            path=str(candidate["path"]),
-            kind=str(candidate["kind"]),
-            answer=answer,
-            line_no=int(candidate["line_no"]),
-            line_text=str(candidate["line_text"]),
-            answer_start_in_line=0,
-            answer_end_in_line=len(answer),
-        ),
-        turn=turn,
+    repo_candidate = RepoDeltaCandidate(
+        path=str(candidate["path"]),
+        kind=str(candidate["kind"]),
+        answer=answer,
+        line_no=int(candidate["line_no"]),
+        line_text=str(candidate["line_text"]),
+        answer_start_in_line=0,
+        answer_end_in_line=len(answer),
     )
+    question = _repo_question(repo_candidate, turn=turn)
     metadata = dict(base_example.metadata)
     metadata["split_name"] = split_name
     metadata["turn"] = turn
     metadata["response_format"] = "identifier_only"
+    if turn == "q2":
+        metadata["repair_cue"] = _tool_event(repo_candidate)
+        metadata["repair_signal_mode"] = "event_only"
+        metadata["decode_prompt_mode"] = "event_plus_q2"
     return replace(
         base_example,
         question=question,

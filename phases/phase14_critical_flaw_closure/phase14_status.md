@@ -1,6 +1,6 @@
 # Phase 14 Status
 
-Last updated: 2026-05-04 03:22 UTC.
+Last updated: 2026-05-04 17:41 UTC.
 
 ## Implemented
 
@@ -169,6 +169,14 @@ Last updated: 2026-05-04 03:22 UTC.
 - Copied compact locked summaries for the Llama 6Q check and Coverage selector
   checks into `paper/figures/` so paper-facing evidence does not depend only on
   ignored local phase-result directories.
+- Closed Phase 14 as the current catch-all experimental closure phase. The only
+  remaining high-value paper gap that should drive new GPU work is the
+  RepoDelta real-repository relevance-shift diagnostic, now tracked as
+  Phase 15 in `phases/phase15_real_repo_relevance_shift/`.
+- Refined the Phase 15 handoff after expert audit: the original line-location
+  RepoDelta scaffold is now smoke/fallback evidence only; the active
+  paper-facing plan is RepoDelta-Edge with frozen manifests, strict identifier
+  scoring, event-only repair signals, and stale/wrong-event controls.
 
 ## Validation
 
