@@ -11,6 +11,8 @@
 \usepackage{tikz}
 \usepackage{pgfplots}
 \usepackage{placeins}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 
 \usetikzlibrary{arrows.meta,positioning}
 \pgfplotsset{compat=1.18}
@@ -52,10 +54,10 @@
 \begin{abstract}
   As large language models (LLMs) support longer contexts and more capable agentic sessions, what matters in the accumulated context can change with each new query, tool output, test result, or browser observation.
   At the same time, inference still depends on a limited active key-value (KV) cache, and many existing KV-cache compression methods decide which past tokens stay active from the current prefix.
-  As a result, tokens that matter in later turns may already have been compressed away in earlier compression decisions.
+  As a result, tokens that matter in later turns may already have been \textcolor{red}{evicted or compressed away} in earlier compression decisions.
   We study post-compression KV cache repair, a runtime mechanism that restores previously evicted tokens to the active cache.
-  RepairKV uses the interval between turns to reevaluate which tokens are important from evicted KV rows stored in a slower memory tier, then promotes a small subset before decoding resumes.
-  Controlled experiments show the same repair effect under changing relevance and different initial eviction rules, and a controlled real-repository diagnostic shows the same pattern in a non-synthetic setting; on Qwen2.5-7B-Instruct at 32K context, RepairKV reaches 91.0\% retrieval on a four-query needle-in-a-haystack task versus 24.5\% for the matched no-repair baseline at the same active-cache budget, using only 96 promoted tokens.
+  \repairkv{} uses the interval between turns to reevaluate which tokens are important from evicted KV rows stored in a slower memory tier, then promotes a small subset before decoding resumes.
+  Controlled experiments show the same repair effect under changing relevance and \textcolor{red}{different initial eviction policies (compression styles)}, and \textcolor{red}{a preliminary diagnostic on open-source repositories} shows the same \textcolor{red}{effect}; on Qwen2.5-7B-Instruct at 32K context, \repairkv{} \textcolor{red}{achieves} 91.0\% retrieval on a four-query needle-in-a-haystack task versus 24.5\% for the matched no-repair baseline at the same active-cache budget, \textcolor{red}{with} only 96 promoted tokens.
 \end{abstract}
 
 % -----------------------------------------------------------------------
@@ -78,6 +80,52 @@ That decision is usually made with information available at the current
 turn, so it is often treated as a one-way operation: evict now, decode
 later from the retained active set.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=latex,
+  stage/.style={draw, rounded corners=3pt, align=center, inner sep=3pt,
+                minimum width=1.55cm, minimum height=0.5cm, fill=gray!7},
+  gpu/.style={draw=blue!65!black, fill=blue!8, rounded corners=2pt,
+              align=center, inner sep=3pt, minimum width=1.7cm},
+  host/.style={draw=orange!75!black, fill=orange!12, rounded corners=2pt,
+               align=center, inner sep=3pt, minimum width=1.7cm},
+  signal/.style={draw=teal!70!black, fill=teal!10, rounded corners=2pt,
+                 align=center, inner sep=3pt, minimum width=1.55cm},
+  cold/.style={draw=gray!70, fill=gray!10, rounded corners=2pt,
+               align=center, inner sep=3pt}]
+  \node[font=\bfseries] at (1.35,4.45) {(a) Idle-window repair};
+  \node[stage] (t0) at (1.0,3.8) {Turn $N$\\prefill + $Q_1$};
+  \node[stage] (idle) at (3.75,3.8) {idle window\\tool / test};
+  \node[stage] (t1) at (6.35,3.8) {Turn $N{+}1$\\resume};
+  \draw[->, thick] (t0) -- (idle);
+  \draw[->, thick] (idle) -- (t1);
+
+  \node[gpu] (base) at (1.0,2.78) {active GPU KV\\budget $\bbase$};
+  \node[host] (warm) at (3.1,1.42) {host memory\\evicted KV};
+  \node[signal] (sig) at (5.15,1.42) {score/select\\new signal};
+  \node[gpu] (repair) at (6.35,2.78) {repaired active KV\\budget $\bbase+K$};
+  \draw[->, dashed] (base.south east) -- (warm.north west)
+    node[pos=0.48, below, xshift=-2pt, font=\tiny, fill=white, inner sep=0.6pt]{offload};
+  \draw[->] (warm) -- (sig);
+  \draw[->, dashed] (sig.north east) -- (repair.south west)
+    node[pos=0.38, below, xshift=4pt, font=\tiny, fill=white, inner sep=0.6pt]{promote selected};
+  \draw[->, gray!70] (base.east) -- (repair.west)
+    node[midway, above, font=\tiny, text=gray!75]{matched no-repair};
+
+  \node[font=\bfseries] at (1.15,0.68) {(b) Tiered KV view};
+  \node[gpu, minimum width=1.8cm] (gpurow) at (1.0,-0.08) {GPU active\\strict budget};
+  \node[host, minimum width=1.8cm] (hostrow) at (3.68,-0.08) {host memory\\searchable};
+  \node[cold, minimum width=1.8cm] (coldrow) at (6.35,-0.08) {cold / remote\\future work};
+  \draw[->, thick] (hostrow.north) .. controls (3.25,0.48) and (1.45,0.48) .. (gpurow.north);
+  \draw[->, dashed, gray!75] (hostrow) -- (coldrow);
+\end{tikzpicture}
+\caption{\textcolor{red}{\repairkv{} system overview:} a paused-request
+KV-state adaptation primitive. A paused request offloads evicted KV to \textcolor{red}{host memory}, scores and promotes a budgeted subset after the next-turn signal
+arrives, and exposes a conceptual tiered-memory interface that production
+engines would materialize through page or block allocators.}
+\label{fig:pipeline}
+\end{figure}
+
 This static view misses two facts about multi-turn inference.
 First, attention relevance is query- and context-dependent: later turns,
 retrieved documents, tool outputs, test failures, or file changes can make
@@ -99,9 +147,19 @@ signal.
 Coding-agent measurements reinforce why this interval is worth studying:
 OS-level execution, including tool calls and setup, can account for
 56--74\% of task latency~\citep{agentcgroup}.
-Together, changing relevance and non-decoding slack create the opportunity
-we study: use the pause before the next decode to revise active KV state
-after compression.
+\textcolor{red}{Furthermore, modern production serving stacks such as
+vLLM~\citep{vllm} now deploy prefix caching by default, but re-deriving
+evicted KV through a fresh prefill pass remains the fallback on cache
+miss, eviction, or paused-request discard.
+Prior work measures this cost at up to 99\% of multi-turn prefill time
+when historical KV is repeatedly recomputed~\citep{cachedattention} and
+at 37\% of end-to-end execution time when paused-request KV is discarded
+in agentic workloads~\citep{infercept}, motivating tiered KV substrates
+that trade recompute for offloaded reuse~\citep{lmcache,ttkv}.}
+Together, changing relevance\textcolor{red}{,} non-decoding
+slack\textcolor{red}{, and the persistent cost of recompute} create the
+opportunity we study: use the pause before the next decode to revise
+active KV state after compression.
 
 This paper studies whether that pause can improve the state seen by the
 next decode.
@@ -109,15 +167,15 @@ In this setting, compression is not only a storage-saving step.
 It also decides which past tokens remain immediately available to the next
 decode.
 Once a request has paused, the runtime may hold a compressed active cache
-plus a host-memory warm buffer of evicted KV rows.
+plus \textcolor{red}{a host-memory store (CPU DRAM)} of evicted KV rows.
 If the next-turn cue becomes available before generation resumes, the
 system has an opportunity to revise which prior context is active.
 In shared serving this is a scheduler tradeoff; in the single-session or
-dedicated setting we target, the same interval is often idle time for
+dedicated setting we target, the same interval is often \textcolor{red}{an idle window} for
 the paused request.
 Either way, the central question is the same: can newly revealed
 turn-$(N{+}1)$ information repair a compressed cache under the same
-resumed active KV budget.
+resumed \textcolor{red}{active-cache} budget.
 
 \paragraph{Setting.}
 Recent analysis shows that KV compression can sharply degrade
@@ -144,7 +202,7 @@ KV can be evicted or offloaded when memory is scarce, then selectively
 promoted when the relevance signal changes.
 After turn $N$, the runtime compresses the evictable context portion to
 an active set $C_{\mathrm{base}}$ with $|C_{\mathrm{base}}|=\bbase$ and
-retains evicted KV in a host-memory warm store $W_N$.
+retains evicted KV in \textcolor{red}{host memory} as $W_N$.
 When the turn-$(N{+}1)$ signal arrives, \repairkv{} scores that store and
 promotes a subset $S_K(Q_2)\subseteq W_N$, $|S_K|\le K$, back into the
 active GPU cache before decoding resumes.
@@ -161,68 +219,21 @@ We contribute:
   from simply keeping more active tokens.
   \item calibrated evidence on pooled split-query multi-query
   needle-in-a-haystack (MQ-NIAH) 4Q/6Q/8Q evaluations, a five-turn
-  revisit diagnostic, three first-stage retention rules, a
+  revisit diagnostic, three first-stage \textcolor{red}{eviction policies}, a
   Scissorhands-style persistence stress test, and preliminary
   real-repository diagnostic evidence, where \repairkv{} exceeds matched
   no-repair and content-agnostic controls while the real-repo variants
   remain below a label-assisted locality reference.
-  \item a repair prototype with transfer/reinjection feasibility results
+  \item a repair prototype with \textcolor{red}{transfer/promotion} feasibility results
   and an instrumented latency probe that separates state movement, proxy
   scoring, and the diagnostic exact Q$_2$ attention-query scorer.
 \end{itemize}
 This controlled scope identifies the repair mechanism on one primary model and
-one synthetic task family, with targeted retention-rule and real-repository
+one synthetic task family, with targeted \textcolor{red}{eviction-policy} and real-repository
 checks.
 The adaptation-facing implication is that long-context agents may need
 between-turn KV state updates in addition to pre-generation pruning.
-Figure~\ref{fig:pipeline} gives the systems-facing data-path abstraction.
-
-\begin{figure}[t] 
-\centering
-\begin{tikzpicture}[font=\scriptsize, >=latex,
-  stage/.style={draw, rounded corners=3pt, align=center, inner sep=3pt,
-                minimum width=1.55cm, minimum height=0.5cm, fill=gray!7},
-  gpu/.style={draw=blue!65!black, fill=blue!8, rounded corners=2pt,
-              align=center, inner sep=3pt, minimum width=1.7cm},
-  host/.style={draw=orange!75!black, fill=orange!12, rounded corners=2pt,
-               align=center, inner sep=3pt, minimum width=1.7cm},
-  signal/.style={draw=teal!70!black, fill=teal!10, rounded corners=2pt,
-                 align=center, inner sep=3pt, minimum width=1.55cm},
-  cold/.style={draw=gray!70, fill=gray!10, rounded corners=2pt,
-               align=center, inner sep=3pt}]
-  \node[font=\bfseries] at (1.35,4.45) {(a) Idle-window repair};
-  \node[stage] (t0) at (1.0,3.8) {Turn $N$\\prefill + $Q_1$};
-  \node[stage] (idle) at (3.75,3.8) {idle gap\\tool / test};
-  \node[stage] (t1) at (6.35,3.8) {Turn $N{+}1$\\resume};
-  \draw[->, thick] (t0) -- (idle);
-  \draw[->, thick] (idle) -- (t1);
-
-  \node[gpu] (base) at (1.0,2.78) {active GPU KV\\budget $\bbase$};
-  \node[host] (warm) at (3.1,1.42) {host warm tier\\evicted KV};
-  \node[signal] (sig) at (5.15,1.42) {score/select\\new signal};
-  \node[gpu] (repair) at (6.35,2.78) {repaired active KV\\budget $\bbase+K$};
-  \draw[->, dashed] (base.south east) -- (warm.north west)
-    node[pos=0.48, below, xshift=-2pt, font=\tiny, fill=white, inner sep=0.6pt]{offload};
-  \draw[->] (warm) -- (sig);
-  \draw[->, dashed] (sig.north east) -- (repair.south west)
-    node[pos=0.38, below, xshift=4pt, font=\tiny, fill=white, inner sep=0.6pt]{promote selected};
-  \draw[->, gray!70] (base.east) -- (repair.west)
-    node[midway, above, font=\tiny, text=gray!75]{matched no-repair};
-
-  \node[font=\bfseries] at (1.15,0.68) {(b) Tiered KV view};
-  \node[gpu, minimum width=1.8cm] (gpurow) at (1.0,-0.08) {GPU active\\strict budget};
-  \node[host, minimum width=1.8cm] (hostrow) at (3.68,-0.08) {host warm\\searchable};
-  \node[cold, minimum width=1.8cm] (coldrow) at (6.35,-0.08) {cold / remote\\future work};
-  \draw[->, thick] (hostrow.north) .. controls (3.25,0.48) and (1.45,0.48) .. (gpurow.north);
-  \draw[->, dashed, gray!75] (hostrow) -- (coldrow);
-\end{tikzpicture}
-\caption{Systems-facing view of \repairkv{} as a paused-request KV-state
-adaptation primitive. A paused request offloads evicted KV to a host-memory
-warm tier, scores and promotes a budgeted subset after the next-turn signal
-arrives, and exposes a conceptual tiered-memory interface that production
-engines would materialize through page or block allocators.}
-\label{fig:pipeline}
-\end{figure}
+Figure~\ref{fig:pipeline} gives \textcolor{red}{a system overview}.
 
 % -----------------------------------------------------------------------
 \section{Related Work}
@@ -251,6 +262,12 @@ compressed~\citep{retrieval_heads,lazy_eviction}.
 These works motivate dynamic KV state, but they mostly make the cache
 dynamic in one direction: retain less, offload more, or retrieve rows
 during active inference.
+\textcolor{red}{Two camps coexist here: token-eviction methods
+(SnapKV, H$_2$O, Scissorhands) discard rows destructively, while
+sparse-attention/retrieval methods (Quest, FIER, ShadowKV) keep the
+full cache and merely skip rows during attention. \repairkv{} occupies
+a third position: rows leave the active GPU cache but persist in host
+memory, so the active set can be revised between turns.}
 \repairkv{} targets the complementary direction.
 It starts from an already compressed paused state, does not rerun
 full-prefix selection after $Q_2$ is revealed, and revises the active
@@ -265,9 +282,14 @@ including API calls, web interaction, repository edits, and interactive
 tasks~\citep{toollm,webarena,swebench,agentbench}.
 Agent-serving and KV-tiering systems reason about resume prefills,
 offloading, cache reuse, and tiered storage across GPU, host memory,
-storage, and network tiers~\citep{continuum,agentserve,lmcache,ttkv}.
+storage, and network tiers~\citep{continuum,agentserve,lmcache,ttkv,cachedattention}.
 These systems manage where KV state lives and how it is reused.
-\repairkv{} asks which offloaded cached units should re-enter the active
+\textcolor{red}{InferCept's preserve strategy parallels our $W_N$
+store and its interception aligns with our pause boundary;
+CachedAttention's pre-loading is the closest existing analogue to
+our content-aware promote step. \repairkv{} adds a content-aware repair
+operator on top of the system-level preservation and pre-loading these
+works already provide,} \textcolor{red}{asking} which offloaded cached units should re-enter the active
 cache when a later turn reveals a new relevance signal.
 
 % -----------------------------------------------------------------------
@@ -276,25 +298,26 @@ cache when a later turn reveals a new relevance signal.
 % -----------------------------------------------------------------------
 
 \paragraph{Overview.}
-Each compression step chooses the active KV set using the information
-available at that point.
+Each compression step \textcolor{red}{can only choose} the active KV set
+\textcolor{red}{with} the information available at that point.
 Before a repaired cache is used for decoding, any available signal about the
 upcoming computation can guide which offloaded KV rows should re-enter the
 active cache.
 We study a minimal controlled repair mechanism: promote selected offloaded
-KV while avoiding a full query-aware recompression pass over the entire
-prefix.
-Figure~\ref{fig:pipeline} summarizes the systems-facing data-path
-abstraction.
+KV \textcolor{red}{rows back into the active cache}.
+Figure~\ref{fig:pipeline} summarizes \textcolor{red}{the system overview}.
 At the pause boundary, the abstraction has three objects:
 \begin{itemize}[leftmargin=1.4em,noitemsep,topsep=2pt]
   \item $C_{\mathrm{base}}$: active evictable KV, with
-  $|C_{\mathrm{base}}|=\bbase$;
-  \item $W_N$: offloaded evicted KV, hidden from decoding unless restored;
+  $|C_{\mathrm{base}}|=\bbase$ \textcolor{red}{(base active-cache budget)};
+  \item $W_N$: offloaded evicted KV, hidden from decoding unless \textcolor{red}{promoted};
   \item $s_{N+1}$: the newly available turn signal, instantiated as $Q_2$.
 \end{itemize}
-The repair map chooses $S_K(s_{N+1})\subseteq W_N$ and resumes from
-$C_{\mathrm{repair}}=C_{\mathrm{base}}\cup S_K$.
+The repair map chooses $S_K(s_{N+1})\subseteq W_N$ \textcolor{red}{with
+$|S_K|\le K$, where $K$ is the restore budget (the number of evicted KV
+rows promoted back into the active cache),} and resumes from
+$C_{\mathrm{repair}}=C_{\mathrm{base}}\cup S_K$ \textcolor{red}{at resumed
+active-cache budget $|C_{\mathrm{repair}}|\le \bbase+K$}.
 
 \paragraph{Two-turn protocol.}
 The protocol proceeds in two turns.
@@ -306,40 +329,90 @@ prompt and generated-answer tail.
 During the subsequent tool-call idle window, the turn-$(N{+}1)$ query
 $Q_2$ becomes known.
 \repairkv{} scores offloaded evicted KV against the active post-$Q_1$
-cache and $Q_2$ signal, restores a $K$-budgeted subset $S_K$, and
+cache and $Q_2$ signal, \textcolor{red}{promotes} a $K$-budgeted subset $S_K$, and
 answers $Q_2$ from $C_{\mathrm{repair}}$.
 The data path has two movements: evicted KV is offloaded to a host-memory
 tier after $Q_1$, and selected KV is copied back before $Q_2$ decoding.
-Full-prefix compression after $Q_2$ is revealed is reserved for the
-recompute baseline family.
-This isolates the adaptation operator for one paused request on one GPU:
+\textcolor{red}{Note that we set aside full-prefill recompute baselines
+from the primary comparison, since re-deriving KV from token IDs after
+$Q_2$ is revealed varies the prefill term rather than the resumed
+active-cache budget. Compute-matched recompute baselines are deferred to
+future work (Section~\ref{sec:discussion}).}
+This isolates the adaptation operator for one paused request on one GPU
+\textcolor{red}{under three controlled conditions}:
 a single host-memory tier, the full $Q_2$ signal known before resumed
 decoding, and a pre-materialized evicted-KV store.
-Scheduling, remote tiering, and retention contention are separate systems
-questions.
+Scheduling, remote tiering, and \textcolor{red}{cache contention} are separate systems
+questions\textcolor{red}{, discussed as future directions
+(Section~\ref{sec:discussion})}.
 
 \paragraph{Repair operation.}
-The repair step scores evicted context positions against the newly
-available turn-$(N{+}1)$ signal, packs the highest-scoring anchors into
-short local bursts, and promotes the selected KV rows in the prototype
-back into the active cache before decoding resumes.
-The prototype restores local bursts because
-the query often contains a key-bearing anchor while the answer depends on
-nearby value tokens.
-Here $K$ denotes a restored-context-token budget; anchor count varies with
-burst packing.
-The exact scorer forms attention scores between RoPE-rotated $Q_2$
-queries and the union of active and evicted keys; writing
-$a_i=\mathrm{mean}_{\ell,h}\max_t q^{(\ell,h)}_{2,t}\!\cdot k_i^{(\ell,h)}$,
-positions are ranked by $a_i$, with the turn-$N$ score and absolute
-position used only as deterministic tie-breakers.
-Each anchor expands to a fixed local burst: two tokens left and twenty right.
-Duplicates are skipped, and the ranked list backfills until $K$ unique
-evicted context rows are selected.
+\textcolor{red}{Intuitively, \repairkv{} asks which evicted KV rows the
+next-turn query $Q_2$ would attend to most and promotes a small
+budgeted subset back into the active cache before decoding resumes,
+packed into local neighborhoods around the top-ranked anchors.}
+\begin{algorithm}[t]
+\caption{General \repairkv{} Execution Framework}
+\label{alg:repair}
+\begin{algorithmic}[1]
+\STATE \textcolor{red}{\textbf{Input:} turn signals $\{s_N\}_{N=1}^T$,
+\textcolor{red}{eviction} policy $\mathcal{P}$, base budget $\bbase$, restore
+budget $K$.}
+\STATE \textcolor{red}{\textbf{Initialize:} active cache $\mathcal{C}$,
+evicted store $\mathcal{W}\!\gets\!\emptyset$.}
+\FOR{\textcolor{red}{$N = 1$ to $T$}}
+  \STATE \textcolor{red}{$\mathrm{ans}_N \gets \textsc{Decode}(\mathcal{C}, s_N)$} \hfill \textcolor{red}{// Decoding}
+  \STATE \textcolor{red}{$\mathcal{C}, \mathcal{W} \gets \mathcal{P}(\mathcal{C}, \mathcal{W}, \bbase)$} \hfill \textcolor{red}{// Compression}
+  \STATE \textcolor{red}{$s_{N+1}$ arrives} \hfill \textcolor{red}{// Idle window begins}
+  \FOR{\textcolor{red}{$i \in \mathcal{W}$}}
+    \STATE \textcolor{red}{$a_i \gets \textsc{Score}(i \mid \mathcal{C}, s_{N+1})$} \hfill \textcolor{red}{// Scoring}
+  \ENDFOR
+  \STATE \textcolor{red}{rank $\mathcal{W}$ by $a_i$} \hfill \textcolor{red}{// Ranking}
+  \STATE \textcolor{red}{$S_K \gets \textsc{Select}(\mathcal{W}, K)$, $|S_K|\!\le\!K$} \hfill \textcolor{red}{// Selection}
+  \STATE \textcolor{red}{$\mathcal{C} \gets \mathcal{C}\!\cup\!S_K$;\, $\mathcal{W} \gets \mathcal{W}\!\setminus\!S_K$} \hfill \textcolor{red}{// Repair}
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+\textcolor{red}{Algorithm~\ref{alg:repair} states the framework:
+turn-by-turn decoding and compression are interleaved with an
+idle-window step that scores, ranks, and selects a $K$-budgeted subset
+of evicted rows to promote before the next decode. Two
+repair-specific choices, $\textsc{Score}$ and $\textsc{Select}$, fully
+specify the prototype; in our prototype, $\mathcal{C} = C_{\mathrm{base}}$
+and $\mathcal{W} = W_N$.}
+
+\textcolor{red}{For \textsc{Score}, post-RoPE $Q_2$ query tensors
+$\{q^{(\ell,h)}_{2,t}\}$ are matched against keys in the active and
+offloaded sets via}
+\begin{equation}
+  \textcolor{red}{A^{(\ell,h)} = \mathrm{softmax}\!\left(
+    \frac{q^{(\ell,h)}_{2,:}\, [K_{C_{\mathrm{base}}},\, K_{W_N}]^{\top}}
+         {\sqrt{d_k}}
+  \right),}
+  \label{eq:score-attn}
+\end{equation}
+\textcolor{red}{restricted to columns in $W_N$, then aggregated as
+$a_i = \mathrm{mean}_{\ell, h} \max_t A^{(\ell,h)}_{t,i}$.
+Because the softmax normalizes over the active and offloaded keys,
+$a_i$ is the attention mass row $i$ would receive given
+$C_{\mathrm{base}}$ rather than a raw inner product. Ties break
+by the per-token score from the turn-$N$ first-stage compression, then
+by ascending position. The proxy
+scorer obtains $\{q^{(\ell,h)}_{2,t}\}$ by appending $Q_2$ to the
+compressed cache and reusing the resulting cache rows; selection is
+unchanged.}
+
+\textcolor{red}{For \textsc{Select}, each top-ranked anchor $i$ is
+expanded into a local burst $\{i{-}L,\dots,i{+}R\} \cap (W_N \setminus
+S_K)$ under a strict $|S_K| \le K$ budget; the right-biased
+$(L, R) = (2, 20)$ reflects the query supplying the anchor while
+answer-bearing values trail it. If anchor bursts do not exhaust $K$,
+remaining slots backfill from single ranked rows. Burst widths are
+fixed in this prototype.}
+
 The current prototype scores token rows, but the systems abstraction is
-promotion over cached units.
-A systems implementation would batch these promotions into exposed blocks or
-pages.
+promotion over cached units\textcolor{red}{; a systems implementation
+would batch these promotions into exposed blocks or pages}.
 
 \paragraph{Matched-budget evaluation.}
 All main claims are made against a no-repair baseline with the same
@@ -352,9 +425,9 @@ state.
 Let $\bmatch$ denote the no-repair condition that applies the base
 eviction policy with context budget $\bbase + K$ while preserving the
 same $Q_1$ prompt and answer tail.
-\repairkv{} decodes from a $\bbase+K$ active context-row budget by
+\repairkv{} decodes from a $\bbase+K$ \textcolor{red}{active-cache budget} by
 starting from $\bbase$ retained rows and promoting $K$ rows from the
-host-memory warm store in this prototype.
+\textcolor{red}{host-memory store} in this prototype.
 The extra store bytes, scorer time, and transfer time are reported
 outside the matched active-cache budget.
 The comparison therefore measures active-cache fairness; total service
@@ -382,7 +455,7 @@ Broader $K$-token cache-state optima and upper bounds remain outside this
 diagnostic.
 Thus the protocol tests whether newly revealed turn-$(N{+}1)$
 information can improve a compressed cache relative to matched
-no-repair retention under the same active-token budget.
+no-repair \textcolor{red}{eviction} under the same \textcolor{red}{active-cache budget}.
 
 % -----------------------------------------------------------------------
 \section{Experimental Setup}
@@ -392,8 +465,10 @@ no-repair retention under the same active-token budget.
 \paragraph{Benchmark family.}
 The main evaluation uses Qwen2.5-7B-Instruct~\citep{qwen} at 32K
 rendered context on a single RTX PRO 6000 Blackwell GPU, with
-context-only SnapKV-style retention as the initial post-$Q_1$
-compressor applied before repair~\citep{snapkv}.
+context-only SnapKV-style \textcolor{red}{compression} \textcolor{red}{(applied
+only to the evictable document context, with the $Q_1$ prompt and answer
+tail preserved)} as the initial post-$Q_1$ compressor applied before
+repair~\citep{snapkv}.
 The task family is a split-query version of multi-query
 needle-in-a-haystack (MQ-NIAH) derived from RULER~\citep{ruler}.
 Each needle binds a key to a value inside a long distractor context, and
@@ -418,7 +493,7 @@ regime found at smaller budgets.
 Unless stated otherwise, the fixed sweep is:
 \begin{itemize}[leftmargin=1.4em,noitemsep,topsep=2pt]
   \item compressor: context-only SnapKV with
-  $R_{\mathrm{ctx}}=128$;
+  $R_{\mathrm{ctx}}=128$ \textcolor{red}{(SnapKV observation-window length)};
   \item base budgets: $\bbase=8192$ for 2Q, $\bbase=16384$ for 4Q, and
   $\bbase=18432$ for 6Q/8Q;
   \item restore budgets: $K=8,16,24,32,48,64,80,96,128$;
@@ -436,23 +511,24 @@ The turn-$N$ eviction signal is the exact generated $Q_1$ answer tail
 instead of a generic last-$32$-token cache suffix.
 The main curves use an exact Q$_2$ attention-query scorer that extracts
 the model's $Q_2$ self-attention query vectors after RoPE and scores
-them against active and evicted keys.
+them against active and offloaded keys.
 The latency probe also measures a cheaper $Q_2$-appended-state proxy
 scorer, reported separately from the exact quality curves.
 
 \paragraph{Baselines and references.}
 Every condition reuses the same full-cache-generated turn-$N$
 transcript when answering $Q_2$.
-We compare the full-cache reference $A$, the base compressed cache $B$,
-matched no-repair $\bmatch$, Random-$K$ and Oldest-$K$ restore
-controls, and \repairkv{}.
-Random-$K$ and Oldest-$K$ restore from the same evicted-KV store as
+We compare the full-cache reference $A$, the base compressed cache $B$
+\textcolor{red}{(the post-$Q_1$ compressed state before any repair;
+distinct from the budget $\bbase$)}, matched no-repair $\bmatch$,
+Random-$K$ and Oldest-$K$ restore controls, and \repairkv{}.
+Random-$K$ and Oldest-$K$ \textcolor{red}{promote} from the same evicted-KV store as
 \repairkv{} without future-query scoring, so they test whether gains come
 from query-aware repair or generic reinsertion.
 The specificity study additionally uses StaleQ-$K$ (score with the
 previous-turn query), WrongQ-$K$ (score with another example's $Q_2$),
 and Refresh-buffered, a stronger $Q_2$-time reference that reselects the
-whole $\bbase+K$ context budget from active plus offloaded rows without
+whole $\bbase+K$ context budget from active and offloaded rows without
 full-prefix recomputation.
 We use Refresh-buffered to expose selector headroom.
 The main claim is that idle-window repair is useful under matched active
@@ -465,21 +541,18 @@ reselectors.
 % -----------------------------------------------------------------------
 
 \paragraph{Matched-budget frontier.}
-Across the 2Q/4Q/6Q/8Q MQ-NIAH family,
-\repairkv{} separates from matched no-repair at moderate-to-large restore
-budgets under the same resumed active KV budget.
-Figure~\ref{fig:main-frontier} reports the raw $Q_2$ answer-score
-frontier.
+Across the 2Q/4Q/6Q/8Q MQ-NIAH family, \repairkv{} separates from
+matched no-repair at moderate-to-large restore budgets under the same
+resumed \textcolor{red}{active-cache} budget.
+At $K=96$, \repairkv{} scores $0.910$ on 4Q, $0.989$ on 6Q, and $0.960$
+on 8Q, while matched no-repair scores $0.245$, $0.422$, and $0.546$,
+respectively; Figure~\ref{fig:main-frontier} reports the full raw $Q_2$
+answer-score frontier.
 Random-$K$ and Oldest-$K$ stay near matched no-repair in the same
-evaluations.
+evaluations, showing that generic reinsertion from the same offloaded
+evicted-KV store does not explain the effect.
 MQ-NIAH-2Q saturates by $K=80$, while matched no-repair remains near
 $0.06$.
-The higher query-count settings separate the curves more gradually: at $K=96$,
-\repairkv{} scores $0.910$ on 4Q, $0.989$ on 6Q, and $0.960$ on 8Q,
-while matched no-repair scores $0.245$, $0.422$, and $0.546$,
-respectively.
-This shows that generic reinsertion from the same offloaded evicted-KV
-store does not explain the effect.
 Appendix diagnostics report \spanref{} headroom and operating regimes:
 on MQ-NIAH-6Q at $K=48$, \spanref{} scores $0.994$ versus $0.653$ for
 \repairkv{}.
@@ -488,8 +561,9 @@ on MQ-NIAH-6Q at $K=48$, \spanref{} scores $0.994$ versus $0.653$ for
   \includegraphics[width=\columnwidth]{figures/frontier_raw_overlay.pdf}
   \caption{Raw exact $Q_2$ score under matched resumed-cache budgets.
   Solid curves are \repairkv{}. Dotted curves are matched no-repair.
-  Right labels report query count and $\Delta_{96}$.
-  Figure~\ref{fig:selection-diagnostic} gives restored-span overlap.
+  Right labels report query count and $\Delta_{96}$\textcolor{red}{,
+  the score gain over matched no-repair at $K=96$}.
+  Figure~\ref{fig:selection-diagnostic} gives \textcolor{red}{promoted-span} overlap.
   Appendix Figure~\ref{fig:app-partition-endpoints} gives per-partition
   \spanref{} endpoints.}
   \label{fig:main-frontier}
@@ -500,15 +574,19 @@ Repair gains are specific to the newly revealed current-turn signal.
 At $K=48$, StaleQ-$K$ and WrongQ-$K$ stay near matched no-repair, with
 gains $0.028$ $[-0.021,0.083]$ and $[-0.014,0.069]$, while \repairkv{}
 reaches $0.326$ $[0.243,0.410]$.
-Refresh-buffered reaches raw score $1.000$, showing that \repairkv{} is an
-incremental primitive with remaining selector headroom.
+\textcolor{red}{Refresh-buffered's perfect score confirms the right
+tokens persist in the active and offloaded keys under matched conditions,
+so idle-window repair is feasible in principle. \repairkv{}'s gain over
+matched no-repair is preliminary evidence that even a simple
+K-promotion selector captures meaningful gains, and designing stronger
+selectors is an open research direction.}
 \begin{table}[t]
   \centering
   \setlength{\tabcolsep}{3.5pt}
   \caption{Next-turn signal specificity at $K=48$ on MQ-NIAH-4Q
   ($72$ paired example-partition cases). Stale and donor controls test
   whether any query-like signal suffices; Refresh is a full-budget
-  reselector over active plus offloaded KV.}
+  reselector over active and offloaded KV.}
   \label{tab:specificity-control}
   \begin{tabular}{@{}lcc@{}}
     \toprule
@@ -537,30 +615,32 @@ End-to-end task validation requires trace-based agent benchmarks.
   \centering
   \includegraphics[width=\columnwidth]{figures/multiturn_hard_trajectory.pdf}
   \caption{Five-turn relevance-shift diagnostic on MQ-NIAH-8Q
-  ($B{=}18{,}432$, $K{=}80$, $n{=}24$). Groups show post-priming exact
+  ($\bbase{=}18{,}432$, $K{=}80$, $n{=}24$). Groups show post-priming exact
   scores at equal active-cache budget. Intervals are bootstrap $95\%$
   CIs for \repairkv{}, and Stale-Q uses the previous-turn query.}
   \label{fig:multiturn}
 \end{figure}
 
-\paragraph{Retention-rule sensitivity.}
-The adaptation effect persists under two protocol-matched retention
-heuristics beyond the primary SnapKV-style rule.
-The structurally different sink-plus-recent rule also passes the gate: at
+\paragraph{\textcolor{red}{Eviction-policy} sensitivity.}
+The adaptation effect persists under two protocol-matched \textcolor{red}{compression
+policies} beyond the primary SnapKV-style \textcolor{red}{policy}.
+The structurally different sink-plus-recent \textcolor{red}{policy} \textcolor{red}{(StreamingLLM-style:
+preserve initial sink tokens plus a recent window~\citep{streamingllm})}
+also passes the gate: at
 $K=128$, \repairkv{} gains $0.431$ over matched no-repair while
 Random-$K$/Oldest-$K$ remain at the matched baseline.
-These are protocol-matched first-stage retention heuristics inspired by
+These are protocol-matched first-stage \textcolor{red}{eviction policies} inspired by
 H$_2$O and StreamingLLM; canonical reproductions would require the full
 original online policies.
-A separate Scissorhands-style persistence-retention stress
+A separate Scissorhands-style \textcolor{red}{persistence} stress
 test~\citep{scissorhands} on MQ-NIAH-6Q also passes the locked gate
 (Appendix Table~\ref{tab:app-scissorhands-stress}).
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/policy_breadth_delta.pdf}
-  \caption{First-stage retention sensitivity on MQ-NIAH-4Q
-  ($n{=}24$, $B{=}16{,}384$). Curves show exact $Q_2$ gain over each
-  rule's matched no-repair baseline. The gray band spans
+  \caption{First-stage \textcolor{red}{eviction-policy} sensitivity on MQ-NIAH-4Q
+  ($n{=}24$, $\bbase{=}16{,}384$). Curves show exact $Q_2$ gain over each
+  \textcolor{red}{policy's} matched no-repair baseline. The gray band spans
   Random-$K$/Oldest-$K$ gains.}
   \label{fig:policy-breadth}
 \end{figure}
@@ -578,8 +658,8 @@ while controls stay near baseline.
   \centering
   \includegraphics[width=\columnwidth]{figures/repair_selection_diagnostic.pdf}
   \caption{Mechanism diagnostic for the final exact MQ-NIAH evaluations.
-  Curves show overlap between restored tokens and annotated $Q_2$ answer
-  spans. Content-agnostic restores stay near baseline while \repairkv{}
+  Curves show overlap between \textcolor{red}{promoted} tokens and annotated $Q_2$ answer
+  spans. Content-agnostic \textcolor{red}{promotions} stay near baseline while \repairkv{}
   increasingly covers future-relevant spans.}
   \label{fig:selection-diagnostic}
 \end{figure}
@@ -588,16 +668,20 @@ while controls stay near baseline.
 To test external validity beyond MQ-NIAH, we ran a controlled
 real-repository relevance-shift diagnostic: 48 callsite examples from 12
 pinned SWE-bench-pool repositories.
-Repair sees only an answer-redacted event cue, and all conditions decode the
-same event-plus-question prompt.
+Repair sees only an answer-redacted event cue \textcolor{red}{(the
+callsite description with the target identifier removed)}, and all
+conditions decode the same event-plus-question prompt.
 At $K=192$, event-only \repairkv{} improves exact identifier accuracy from
 $18.8\%$ matched to $72.9\%$.
-Non-query controls and ToolFile-$K$ remain near matched.
-File-gated \repairkv{} reaches $83.3\%$.
-Label-assisted AnchorWindow reaches $89.6\%$.
+Non-query controls and ToolFile-$K$ \textcolor{red}{(file-name-assisted
+with oldest-row backfill)} remain near matched.
+File-gated \repairkv{} \textcolor{red}{(label-assisted, restricting
+candidates to the event-named file)} reaches $83.3\%$.
+Label-assisted AnchorWindow \textcolor{red}{(oracle locality reference)}
+reaches $89.6\%$.
 This remains a small external-validity diagnostic, with no claim to be a
 real-code benchmark.
-Strict exclusions keep the gain positive ($+55.3/+62.9/+75.0$ points).
+Strict exclusions keep the gain positive.
 Appendix Figure~\ref{fig:app-real-repo-diagnostic} gives the full audit.
 \begin{table}[b]
   \centering
@@ -605,8 +689,9 @@ Appendix Figure~\ref{fig:app-real-repo-diagnostic} gives the full audit.
   \caption{Preliminary real-repository diagnostic at $K=192$ over $48$
   callsite cases from $12$ pinned SWE-bench-pool repositories. Accuracy is
   exact target-identifier recovery. Non-query summarizes the best of random,
-  oldest, stale-cue, and wrong-event controls. AnchorWindow is
-  label-assisted.}
+  oldest, stale-cue, and wrong-event controls. \textcolor{red}{AnchorWindow
+  and File-gated are label-assisted; non-label methods are Matched,
+  RepairKV, and ToolFile-$K$.}}
   \label{tab:real-repo-diagnostic}
   \begin{tabular}{@{}lr@{}}
     \toprule
@@ -622,15 +707,6 @@ Appendix Figure~\ref{fig:app-real-repo-diagnostic} gives the full audit.
   \end{tabular}
 \end{table}
 
-\begin{figure}[tbp]
-  \centering
-  \includegraphics[width=\columnwidth]{figures/runtime_repair_scaling.pdf}
-  \caption{Runtime-capacity probe on the evaluation GPU. (a) Component-summed
-  p95 service time at query length 64. (b) Stage-wise p95 component time for
-  $K=5000$. Generation and the research exact answer scorer are excluded.}
-  \label{fig:runtime-envelope}
-\end{figure}
-
 \paragraph{Latency accounting.}
 The exact Q$_2$ scorer is a mechanism diagnostic for the controlled quality
 curves, not the proposed runtime implementation.
@@ -638,7 +714,7 @@ A $Q_2$-appended-state proxy provides benchmark evidence for a cheaper
 Q$_2$-conditioned scoring path: on paired 4Q/6Q runs at $K=96$, it scores
 $0.970/0.894$ versus matched $0.245/0.422$.
 Appendix Figure~\ref{fig:app-proxy-controlled} gives the proxy frontier.
-Production deployment would require GPU-side or paged warm-tier selection
+Production deployment would require GPU-side or \textcolor{red}{paged host-memory} selection
 integrated with scheduler slack.
 
 \paragraph{Capacity envelope.}
@@ -648,6 +724,15 @@ At $K=5000$, p95 grows from $50.0$\,ms at 32K candidates to $1.20$\,s at
 1M and $4.64$\,s at 4M.
 The plot should be read as a capacity envelope; trace-scheduled latency
 distributions remain a systems follow-up.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/runtime_repair_scaling.pdf}
+  \caption{Runtime-capacity probe on the evaluation GPU. (a) Component-summed
+  p95 service time at query length 64. (b) Stage-wise p95 component time for
+  $K=5000$. Generation and the research exact answer scorer are excluded.}
+  \label{fig:runtime-envelope}
+\end{figure}
 
 % -----------------------------------------------------------------------
 \section{Discussion and Limitations}
@@ -664,8 +749,7 @@ compression but before resumed decoding.
 The mechanism should be most useful when:
 \begin{itemize}[leftmargin=1.4em,noitemsep,topsep=2pt]
   \item the next turn changes which old context matters;
-  \item the compressed cache still leaves useful choices in the evicted
-  warm tier; and
+  \item the compressed cache still leaves useful choices in \textcolor{red}{the evicted host-memory store}; and
   \item the idle window or scheduler has enough slack for scoring and KV
   movement.
 \end{itemize}
@@ -678,7 +762,7 @@ host-plus-device storage and end-to-end service cost are reported
 separately.
 The exact scorer is a diagnostic rather than a production selector, the
 proxy scorer is only a first approximation, and stronger $Q_2$-aware
-reselectors or full-prefix recompute may dominate when enough idle time is
+reselectors or full-prefix recompute may dominate when enough \textcolor{red}{idle-window slack} is
 available.
 The real-repository diagnostic is small and exploratory, so it supports
 external validity without serving as a SWE-bench issue-resolution
@@ -693,7 +777,7 @@ If context relevance changes after eviction, the cache lifecycle can move
 in both directions: compress to fit the active budget, then repair by
 promoting relevant evicted state before the next decode.
 Across MQ-NIAH-4Q/6Q/8Q, this repair beats matched no-repair while random
-and oldest-token restores stay near baseline.
+and oldest-token \textcolor{red}{promotions} stay near baseline.
 The broader direction is mutable KV memory for resource-adaptive
 long-context inference, with pause windows treated as part of the
 inference budget.
@@ -740,6 +824,14 @@ Dzikanyanga, G., Yang, W., Huang, H., Wu, D., Wang, S., Xia, W., and
   K~C, S.
 \newblock TTKV: Temporal-tiered KV cache for long-context LLM inference.
 \newblock \emph{arXiv:2604.19769}, 2026.
+
+\bibitem[Gao et~al.(2024)]{cachedattention}
+Gao, B., He, Z., Sharma, P., Kang, Q., Jevdjic, D., Zhao, J., and
+  Zuo, P.
+\newblock Cost-efficient large language model serving for multi-turn
+  conversations with CachedAttention.
+\newblock In \emph{Proceedings of the 2024 USENIX Annual Technical
+  Conference (USENIX ATC)}, 2024.
 
 \bibitem[Hsieh et~al.(2024)]{ruler}
 Hsieh, C.-Y., Sun, S., Kriman, S., Acharya, S., Rekesh, D., Jia, F.,
@@ -936,7 +1028,7 @@ Main Qwen runs use BF16 weights on one RTX PRO 6000 Blackwell GPU with
 Python 3.12.3, PyTorch 2.10.0+cu128, and Transformers 5.2.0.
 The exact Q$_2$ attention-query scorer extracts the model's actual
 self-attention query vectors for $Q_2$ prompt tokens after RoPE and
-scores them against active and evicted keys.
+scores them against active and offloaded keys.
 This is distinct from decode-time answer-token attention.
 The $Q_2$-appended-state proxy instead appends $Q_2$ to the compressed
 cache with an ordinary forward pass and reuses the appended $Q_2$ cache
@@ -980,19 +1072,19 @@ each requested value is recovered.
 Recency-favorable splits such as $12{\rightarrow}34$ are left to
 separate diagnostics outside the main future-query repair result.
 
-\paragraph{Scissorhands-style retention stress test.}
+\paragraph{Scissorhands-style \textcolor{red}{persistence} stress test.}
 Table~\ref{tab:app-scissorhands-stress} repeats the MQ-NIAH-6Q locked
-protocol after replacing the initial SnapKV-style retention rule with a
-one-shot persistence rule inspired by Scissorhands.
+protocol after replacing the initial SnapKV-style \textcolor{red}{eviction policy} with a
+one-shot persistence \textcolor{red}{policy} inspired by Scissorhands.
 The test asks whether repair still works when the compressed active cache
-is chosen by past attention persistence in place of the primary retention
-rule.
+is chosen by past attention persistence in place of the primary \textcolor{red}{eviction
+policy}.
 Canonical online per-head Scissorhands reproduction remains future work.
 
 \begin{table}[H]
   \centering
-  \caption{Scissorhands-style persistence-retention stress test on
-  MQ-NIAH-6Q ($B{=}18{,}432$, $n{=}24$). Values are exact scores. Best
+  \caption{Scissorhands-style \textcolor{red}{persistence} stress test on
+  MQ-NIAH-6Q ($\bbase{=}18{,}432$, $n{=}24$). Values are exact scores. Best
   ctrl. is the stronger of Random-$K$ and Oldest-$K$; the interval is the
   paired bootstrap $95\%$ CI for \repairkv{}$-\bmatch$.}
   \label{tab:app-scissorhands-stress}
@@ -1014,21 +1106,21 @@ Canonical online per-head Scissorhands reproduction remains future work.
 \label{app:additional-discussion}
 
 \paragraph{Tiered-cache scaling.}
-Repair creates a two-level retention problem because the main curves match
+Repair creates a two-level \textcolor{red}{cache-budget} problem because the main curves match
 the resumed active GPU KV budget while tracking total host-plus-device
 storage separately.
-A strict device-resident policy chooses the active KV budget, while a
+A strict device-resident policy chooses the \textcolor{red}{active-cache} budget, while a
 looser off-device policy decides which evicted rows remain searchable,
 compressed, summarized, or recomputable.
 In the Qwen-shaped accounting
 above, 4M searchable rows already imply about 240\,GB before metadata.
 Thus \repairkv{} supports the middle operation in a tiered hierarchy:
-turn-conditioned promotion from a warm tier during an idle gap.
+turn-conditioned promotion from \textcolor{red}{host memory} during an \textcolor{red}{idle window}.
 This is a hardware-facing implication; hardware measurement remains
 future work.
 
 \paragraph{Idle-window repair interface.}
-A practical implementation would expose a warm-tier index over evicted KV
+A practical implementation would expose \textcolor{red}{a host-memory index} over evicted KV
 units, a time-budgeted selector conditioned on the next-turn signal,
 asynchronous promotion into the active cache, and fallbacks to no-repair or
 full recompute.
@@ -1135,10 +1227,10 @@ Exact audit values remain in released result artifacts.
   \end{minipage}
   \caption{Supplementary latency and proxy diagnostics. (a) Synthetic
   move-and-inject capacity for Qwen-shaped BF16 KV on the evaluation GPU.
-  Measurements use pinned host-memory restored blocks, exclude scorer time
+  Measurements use pinned host-memory \textcolor{red}{promoted} blocks, exclude scorer time
   and generation, and report p95 latency as $K$ or active cache size grows.
   (b) Controlled proxy-scorer frontier on MQ-NIAH-4Q/6Q ($100$ examples per
-  split). At $K=96$, content-agnostic restores stay within $0.010$/$0.004$
+  split). At $K=96$, content-agnostic \textcolor{red}{promotions} stay within $0.010$/$0.004$
   of matched no-repair while proxy \repairkv{} remains well above matched.}
   \label{fig:app-runtime-capacity}
   \label{fig:app-proxy-controlled}
