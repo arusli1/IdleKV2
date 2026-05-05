@@ -224,9 +224,9 @@ We contribute:
   real-repository diagnostic evidence, where \repairkv{} exceeds matched
   no-repair and content-agnostic controls while the real-repo variants
   remain below a label-assisted locality reference.
-  \item a repair prototype with \textcolor{red}{transfer/promotion} feasibility results
-  and an instrumented latency probe that separates state movement, proxy
-  scoring, and the diagnostic exact Q$_2$ attention-query scorer.
+  \item \textcolor{red}{a repair prototype with transfer/promotion feasibility
+  results and a controlled GPU runtime probe for chunked scan, top-$K$
+  selection, and KV movement.}
 \end{itemize}
 This controlled scope identifies the repair mechanism on one primary model and
 one synthetic task family, with targeted \textcolor{red}{eviction-policy} and real-repository
@@ -397,10 +397,7 @@ Because the softmax normalizes over the active and offloaded keys,
 $a_i$ is the attention mass row $i$ would receive given
 $C_{\mathrm{base}}$ rather than a raw inner product. Ties break
 by the per-token score from the turn-$N$ first-stage compression, then
-by ascending position. The proxy
-scorer obtains $\{q^{(\ell,h)}_{2,t}\}$ by appending $Q_2$ to the
-compressed cache and reusing the resulting cache rows; selection is
-unchanged.}
+by ascending position.}
 
 \textcolor{red}{For \textsc{Select}, each top-ranked anchor $i$ is
 expanded into a local burst $\{i{-}L,\dots,i{+}R\} \cap (W_N \setminus
@@ -507,13 +504,14 @@ uses 24 examples per split over five partitions.
 Prompt and decode settings are reported in the appendix.
 
 \paragraph{Scorers.}
-The turn-$N$ eviction signal is the exact generated $Q_1$ answer tail
-instead of a generic last-$32$-token cache suffix.
-The main curves use an exact Q$_2$ attention-query scorer that extracts
-the model's $Q_2$ self-attention query vectors after RoPE and scores
-them against active and offloaded keys.
-The latency probe also measures a cheaper $Q_2$-appended-state proxy
-scorer, reported separately from the exact quality curves.
+\textcolor{red}{The turn-$N$ eviction signal is the exact generated $Q_1$
+answer tail instead of a generic last-$32$-token cache suffix.
+For the main quality curves, we append $Q_2$ to the compressed active
+cache, extract the model's post-RoPE $Q_2$ query projections, and score
+active and offloaded key rows under those projections before selecting
+evicted rows for promotion. This exact-Q$_2$ selector gives a controlled
+measurement of how well the newly revealed turn signal identifies rows
+worth promoting.}
 
 \paragraph{Baselines and references.}
 Every condition reuses the same full-cache-generated turn-$N$
@@ -707,30 +705,29 @@ Appendix Figure~\ref{fig:app-real-repo-diagnostic} gives the full audit.
   \end{tabular}
 \end{table}
 
-\paragraph{Latency accounting.}
-The exact Q$_2$ scorer is a mechanism diagnostic for the controlled quality
-curves, not the proposed runtime implementation.
-A $Q_2$-appended-state proxy provides benchmark evidence for a cheaper
-Q$_2$-conditioned scoring path: on paired 4Q/6Q runs at $K=96$, it scores
-$0.970/0.894$ versus matched $0.245/0.422$.
-Appendix Figure~\ref{fig:app-proxy-controlled} gives the proxy frontier.
-Production deployment would require GPU-side or \textcolor{red}{paged host-memory} selection
-integrated with scheduler slack.
+\paragraph{\textcolor{red}{Runtime accounting.}}
+\textcolor{red}{We run a separate GPU runtime probe for the repair operation.
+The probe measures chunked scan, top-$K$ selection, and KV movement over
+pinned host-memory BF16 tensors with Qwen-shaped dimensions.
+Figure~\ref{fig:runtime-envelope} reports the resulting capacity envelope,
+giving a controlled estimate of how repair time scales with the number of
+offloaded candidate rows and the restore budget.}
 
 \paragraph{Capacity envelope.}
-Figure~\ref{fig:runtime-envelope} reports a single-node p95 envelope for a
-chunked GPU selector over pinned host-memory BF16 keys.
-At $K=5000$, p95 grows from $50.0$\,ms at 32K candidates to $1.20$\,s at
-1M and $4.64$\,s at 4M.
-The plot should be read as a capacity envelope; trace-scheduled latency
-distributions remain a systems follow-up.
+\textcolor{red}{At $K=5000$, the p95 repair envelope grows from
+$50.0$\,ms at 32K offloaded candidates to $1.20$\,s at 1M and
+$4.64$\,s at 4M. These measurements show the operating range for a
+single-node GPU implementation; trace-scheduled serving latency is a
+natural next systems step.}
 
 \begin{figure}[tbp]
   \centering
   \includegraphics[width=\columnwidth]{figures/runtime_repair_scaling.pdf}
-  \caption{Runtime-capacity probe on the evaluation GPU. (a) Component-summed
-  p95 service time at query length 64. (b) Stage-wise p95 component time for
-  $K=5000$. Generation and the research exact answer scorer are excluded.}
+  \caption{\textcolor{red}{Runtime-capacity probe on the evaluation GPU.
+  (a) Component-summed p95 service time for chunked scan, top-$K$
+  selection, and KV movement at query length 64 over pinned host-memory
+  BF16 KV-shaped tensors. (b) Stage-wise p95 component time for $K=5000$.
+  Generation and answer evaluation are excluded.}}
   \label{fig:runtime-envelope}
 \end{figure}
 
@@ -760,10 +757,10 @@ copy bandwidth, and queueing slack.
 The quality comparisons match active GPU KV budget; total
 host-plus-device storage and end-to-end service cost are reported
 separately.
-The exact scorer is a diagnostic rather than a production selector, the
-proxy scorer is only a first approximation, and stronger $Q_2$-aware
-reselectors or full-prefix recompute may dominate when enough \textcolor{red}{idle-window slack} is
-available.
+\textcolor{red}{The exact-Q$_2$ selector provides a controlled view of the
+repair signal, and stronger $Q_2$-aware reselectors, page-level policies,
+or full-prefix recompute may further improve the quality-runtime frontier
+when enough idle-window slack is available.}
 The real-repository diagnostic is small and exploratory, so it supports
 external validity without serving as a SWE-bench issue-resolution
 benchmark.
@@ -1026,15 +1023,14 @@ Bootstrap intervals are percentile intervals over paired
 example-partition rows with fixed seeds.
 Main Qwen runs use BF16 weights on one RTX PRO 6000 Blackwell GPU with
 Python 3.12.3, PyTorch 2.10.0+cu128, and Transformers 5.2.0.
-The exact Q$_2$ attention-query scorer extracts the model's actual
-self-attention query vectors for $Q_2$ prompt tokens after RoPE and
-scores them against active and offloaded keys.
-This is distinct from decode-time answer-token attention.
-The $Q_2$-appended-state proxy instead appends $Q_2$ to the compressed
-cache with an ordinary forward pass and reuses the appended $Q_2$ cache
-rows as scoring rows.
-Both scorers are benchmark instrumentation rather than fused production
-serving kernels.
+\textcolor{red}{The exact-Q$_2$ attention-query selector appends $Q_2$ to
+the compressed active cache, extracts the model's post-RoPE query
+projections for the $Q_2$ prompt tokens, and scores active and offloaded
+key rows under those projections before selecting evicted rows for
+promotion. This selector is distinct from decode-time answer-token
+attention and from the final answer metric. The $Q_2$-appended-state proxy
+appends $Q_2$ to the compressed cache and uses the appended cache rows as
+a second Q$_2$-conditioned scoring signal.}
 
 \paragraph{Span-group diagnostic.}
 \spanref{} starts from the same $B$ state and offloaded evicted-KV store
@@ -1144,9 +1140,9 @@ selector families.
 \section{Supplementary Experimental Views}
 \label{app:supplementary-figures}
 
-The supplementary figures probe external validity, query-count and
-operating-regime breadth, partition consistency, and latency/proxy
-behavior.
+\textcolor{red}{The supplementary figures probe external validity,
+query-count and operating-regime breadth, partition consistency, runtime
+capacity, and appendix selector diagnostics.}
 Exact audit values remain in released result artifacts.
 \FloatBarrier
 
@@ -1223,15 +1219,17 @@ Exact audit values remain in released result artifacts.
     \vspace{0pt}
     \centering
     \includegraphics[width=\linewidth]{figures/proxy_controlled_frontier.pdf}\\[-0.35em]
-    {\small (b) Proxy scorer frontier}
+    {\small \textcolor{red}{(b) Proxy-selector diagnostic}}
   \end{minipage}
-  \caption{Supplementary latency and proxy diagnostics. (a) Synthetic
-  move-and-inject capacity for Qwen-shaped BF16 KV on the evaluation GPU.
-  Measurements use pinned host-memory \textcolor{red}{promoted} blocks, exclude scorer time
-  and generation, and report p95 latency as $K$ or active cache size grows.
-  (b) Controlled proxy-scorer frontier on MQ-NIAH-4Q/6Q ($100$ examples per
-  split). At $K=96$, content-agnostic \textcolor{red}{promotions} stay within $0.010$/$0.004$
-  of matched no-repair while proxy \repairkv{} remains well above matched.}
+  \caption{\textcolor{red}{Supplementary runtime and selector diagnostics.
+  (a) Synthetic move-and-inject capacity for Qwen-shaped BF16 KV on the
+  evaluation GPU, separate from the Figure~\ref{fig:runtime-envelope}
+  scan/select envelope. Measurements use pinned host-memory promoted
+  blocks and report p95 latency as $K$ or active cache size grows.
+  (b) Appendix proxy-selector diagnostic on MQ-NIAH-4Q/6Q ($100$ examples
+  per split). At $K=96$, content-agnostic promotions stay within
+  $0.010$/$0.004$ of matched no-repair while proxy \repairkv{} remains
+  well above matched.}}
   \label{fig:app-runtime-capacity}
   \label{fig:app-proxy-controlled}
 \end{figure}
