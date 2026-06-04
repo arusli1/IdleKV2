@@ -1,0 +1,14 @@
+{
+  "repos": [
+    {
+      "archive_sha256": "<sha256-of-local-snapshot-archive>",
+      "commit_sha": "<pinned-commit-sha>",
+      "license_spdx": "MIT",
+      "repo_id": "example-public-python-repo",
+      "repo_root": "/abs/path/to/pinned/snapshot",
+      "repo_url": "https://github.com/example/project",
+      "split": "dev"
+    }
+  ]
+}
+

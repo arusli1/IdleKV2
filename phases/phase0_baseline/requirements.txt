@@ -1,0 +1,16 @@
+beautifulsoup4
+fastapi
+html2text
+huggingface_hub
+nltk
+numpy
+pandas
+PyYAML
+requests
+scipy
+tenacity
+tqdm
+transformers>=4.44.0
+uvicorn
+vllm
+wonderwords

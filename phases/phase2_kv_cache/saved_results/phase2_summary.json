@@ -1,0 +1,168 @@
+{
+  "environment": {
+    "cache_runtime_type": "DynamicCache",
+    "config_torch_dtype": "torch.bfloat16",
+    "device": "cuda:0",
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpu_total_memory_gb": 101.97,
+    "head_dim": 128,
+    "layer0_dtype": "torch.bfloat16",
+    "layer0_key_shape": [
+      1,
+      4,
+      2,
+      128
+    ],
+    "layer0_value_shape": [
+      1,
+      4,
+      2,
+      128
+    ],
+    "model_dir": "/home/ubuntu/IdleKV/models/Qwen2.5-7B-Instruct",
+    "num_attention_heads": 28,
+    "num_hidden_layers": 28,
+    "num_key_value_heads": 4
+  },
+  "heatmaps": {
+    "files": {
+      "layer_avg_4k.png": {
+        "markers": {
+          "hop1": 491,
+          "hop2": 1515,
+          "hop3": 2539,
+          "hop4": 3440,
+          "query": 4079
+        },
+        "path": "/home/ubuntu/IdleKV/phases/phase2_kv_cache/results/phase2_attention_heatmaps/layer_avg_4k.png",
+        "tokens": 4096
+      },
+      "layer_avg_8k.png": {
+        "markers": {
+          "hop1": 983,
+          "hop2": 3031,
+          "hop3": 5079,
+          "hop4": 6881,
+          "query": 8175
+        },
+        "path": "/home/ubuntu/IdleKV/phases/phase2_kv_cache/results/phase2_attention_heatmaps/layer_avg_8k.png",
+        "tokens": 8192
+      },
+      "vt4hop_hop_positions_marked.png": {
+        "markers": {
+          "hop1": 983,
+          "hop2": 3031,
+          "hop3": 5079,
+          "hop4": 6881,
+          "query": 8175
+        },
+        "path": "/home/ubuntu/IdleKV/phases/phase2_kv_cache/results/phase2_attention_heatmaps/vt4hop_hop_positions_marked.png",
+        "tokens": 8192
+      }
+    },
+    "layer_indices": [
+      0,
+      14,
+      27
+    ]
+  },
+  "injection": {
+    "access_code": "99273",
+    "context_tokens": 1536,
+    "degraded_text": "1234567",
+    "degraded_text_differs": true,
+    "query_tokens": 18,
+    "recovered_text_match": true,
+    "reference_text": "99273\n```",
+    "reference_vs_degraded_max_abs_logit_diff": 19.875,
+    "reference_vs_restored_max_abs_logit_diff": 0.0,
+    "removed_fact_token_count": 21,
+    "restored_text": "99273\n```"
+  },
+  "round_trip": {
+    "context_tokens": 1024,
+    "continuation_token_id": 151645,
+    "dtype": "torch.bfloat16",
+    "max_abs_logit_diff": 0.0,
+    "pass": true,
+    "saved_cache_dir": "/home/ubuntu/IdleKV/phases/phase2_kv_cache/results/tmp_round_trip_cache",
+    "seq_len": 1024
+  },
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "successful": true,
+    "tests_run": 7
+  },
+  "transfer_latency": {
+    "context_tokens": 32768,
+    "test_sizes": {
+      "100": {
+        "bytes_copied": 5734400,
+        "evict": {
+          "p50_ms": 1.172300981124863,
+          "p90_ms": 1.307277794694528,
+          "throughput_gb_per_s_at_p50": 4.8915765595433065
+        },
+        "restore": {
+          "p50_ms": 0.2919799881055951,
+          "p90_ms": 0.30596181750297546,
+          "throughput_gb_per_s_at_p50": 19.63970214947109
+        }
+      },
+      "1000": {
+        "bytes_copied": 57344000,
+        "evict": {
+          "p50_ms": 19.105098501313478,
+          "p90_ms": 19.308794348035008,
+          "throughput_gb_per_s_at_p50": 3.001502452136407
+        },
+        "restore": {
+          "p50_ms": 1.1450655001681298,
+          "p90_ms": 1.2195315852295607,
+          "throughput_gb_per_s_at_p50": 50.079231268063
+        }
+      },
+      "2000": {
+        "bytes_copied": 114688000,
+        "evict": {
+          "p50_ms": 52.49421950429678,
+          "p90_ms": 52.680523303570226,
+          "throughput_gb_per_s_at_p50": 2.184773887163186
+        },
+        "restore": {
+          "p50_ms": 2.183505508583039,
+          "p90_ms": 2.3018997977487743,
+          "throughput_gb_per_s_at_p50": 52.52471292111622
+        }
+      },
+      "500": {
+        "bytes_copied": 28672000,
+        "evict": {
+          "p50_ms": 2.9661160078831017,
+          "p90_ms": 3.095558116910979,
+          "throughput_gb_per_s_at_p50": 9.666513354096027
+        },
+        "restore": {
+          "p50_ms": 0.6476584821939468,
+          "p90_ms": 0.6548316974658519,
+          "throughput_gb_per_s_at_p50": 44.27024548937186
+        }
+      },
+      "5000": {
+        "bytes_copied": 286720000,
+        "evict": {
+          "p50_ms": 136.50891298311763,
+          "p90_ms": 137.18095354852267,
+          "throughput_gb_per_s_at_p50": 2.1003756731654533
+        },
+        "restore": {
+          "p50_ms": 5.31087550916709,
+          "p90_ms": 5.417394108371809,
+          "throughput_gb_per_s_at_p50": 53.98733212727228
+        }
+      }
+    }
+  }
+}

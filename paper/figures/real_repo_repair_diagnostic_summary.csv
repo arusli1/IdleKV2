@@ -1,0 +1,25 @@
+panel,label,k,score,idlekv_lift_vs_b_match,idlekv_lift_vs_anchor_window,n_examples,repo_count
+whole,Matched,96,0.187500,,,48,12
+whole,Random,96,0.208333,,,48,12
+whole,Oldest,96,0.166667,,,48,12
+whole,Stale cue,96,0.166667,,,48,12
+whole,Wrong event,96,0.166667,,,48,12
+whole,ToolFile,96,0.208333,,,48,12
+whole,Lexical,96,0.270833,,,48,12
+whole,IdleKV,96,0.562500,,,48,12
+whole,File-gated,96,0.729167,,,48,12
+whole,AnchorWindow*,96,0.895833,,,48,12
+whole,Matched,192,0.187500,,,48,12
+whole,Random,192,0.166667,,,48,12
+whole,Oldest,192,0.166667,,,48,12
+whole,Stale cue,192,0.166667,,,48,12
+whole,Wrong event,192,0.166667,,,48,12
+whole,ToolFile,192,0.187500,,,48,12
+whole,Lexical,192,0.395833,,,48,12
+whole,IdleKV,192,0.729167,,,48,12
+whole,File-gated,192,0.833333,,,48,12
+whole,AnchorWindow*,192,0.895833,,,48,12
+sensitivity,All rows,192,,0.541667,-0.166667,48,12
+sensitivity,No cue hit,192,,0.553191,-0.170213,47,12
+sensitivity,No answer retained,192,,0.628571,-0.142857,35,12
+sensitivity,Strict eligible,192,,0.750000,-0.250000,16,9

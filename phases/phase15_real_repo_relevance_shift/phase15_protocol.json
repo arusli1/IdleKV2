@@ -1,0 +1,31 @@
+{
+  "base_context_budget": 16384,
+  "bootstrap_seed": 20260504,
+  "conditions": [
+    "A",
+    "B",
+    "B_match",
+    "Random-K",
+    "Oldest-K",
+    "IdleKV-EventOnly-K",
+    "StaleCue-K",
+    "WrongEvent-K",
+    "ToolFile-K",
+    "AnchorWindow-K"
+  ],
+  "context_tokens": 32768,
+  "k_grid": [
+    96,
+    192
+  ],
+  "metadata": {
+    "status": "dev-default; freeze a copy before locked runs"
+  },
+  "model_dir": "models/Qwen2.5-7B-Instruct",
+  "notes": "Phase 15 CPU-gated default protocol for the bounded real-repo diagnostic. Locked runs require a frozen copy.",
+  "primary_k": 192,
+  "recency_window": 1024,
+  "scoring_rule": "strict_identifier_first_line",
+  "source_task": "repodelta_edge",
+  "tokenizer_dir": "models/Qwen2.5-7B-Instruct"
+}

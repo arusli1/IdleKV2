@@ -1,0 +1,16 @@
+{
+  "schedule": {
+    "revisit_events": [
+      {
+        "query_index": 0,
+        "first_turn": 1,
+        "revisit_turn": 4
+      },
+      {
+        "query_index": 1,
+        "first_turn": 1,
+        "revisit_turn": 4
+      }
+    ]
+  }
+}

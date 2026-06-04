@@ -1,222 +1,239 @@
-# IdleKV
+# RepairKV
 
-Treating agentic idle time as a first-class compute resource for KV cache quality recovery. IdleKV runs refinement operations during tool-call pauses in agentic LLM workflows to improve compressed KV cache quality without affecting user-perceived latency.
+**Cache You Later: Post-Compression KV Repair for Long-Context Agentic
+LLM Inference.**
 
-## Current Read
+![RepairKV system overview](paper/figures/figure1_pipeline.png)
 
-- The strongest measured claim is still the delayed-query / short-idle gain:
-  `Phase 1 @ 100ms` helps on the informative Qwen `RULER 4K` slice.
-- The main method direction is now stochastic anytime repair from a cold store.
-- `sampled_spans` is the intended primary runtime path.
-- `shadow_only` is the fast local baseline.
-- `full_refresh` is a long-budget control, not the current center of the story.
+> *RepairKV system overview. During agent decode pauses (tool calls,
+> retrievals), a selected signal `s` (a new user query, a tool result,
+> retrieved content, or the model's recent generation) is used to rank
+> host KV rows; the top-`K` are lifted back into GPU HBM at their
+> original sequence positions.*
 
-## Start Here
+RepairKV is a research prototype for **post-compression KV cache repair** in
+long-context, multi-turn LLM inference. Existing KV-cache compression methods
+decide which past tokens stay active using only the information available at
+compression time, and then treat that decision as one-way. In agentic
+workflows, a later user turn, tool result, retrieved document, or browser
+observation can shift which earlier context matters, but tokens that mattered
+in later turns may already be evicted.
 
-If you are taking over this repo on a fresh SSH/Codex session, read these in order:
+RepairKV treats the compressed cache as revisable. During the pause before
+decoding resumes, it scores offloaded evicted KV rows against the next-turn
+signal and promotes a small budgeted subset back into the active GPU cache.
+The main comparisons use a **matched resumed active-cache budget**: RepairKV
+is compared against no-repair and content-agnostic restore controls with the
+same number of active context KV rows.
 
-1. [STATUS.md](STATUS.md)
-2. [STOCHASTIC_ANYTIME_REPAIR_REFINED.md](STOCHASTIC_ANYTIME_REPAIR_REFINED.md)
-3. [tracked_results/README.md](tracked_results/README.md)
-4. [SETUP.md](SETUP.md)
-5. [TASKS.md](TASKS.md)
-6. [`configs/stochastic_core.yaml`](configs/stochastic_core.yaml)
-7. [`configs/main.yaml`](configs/main.yaml) if you are extending beyond the stochastic-core scope on a single A10G
+## Research Question
 
-## Setup
+KV-cache compression decides which past tokens remain active before the next
+turn is known. RepairKV asks a narrower question:
 
-### Mac Development (CPU)
+> If a future turn reveals new evidence about which past tokens matter, can a
+> runtime revise the active KV state during a pause without increasing the
+> resumed active-cache budget?
+
+This is a mechanism study, not a production serving stack. Model weights stay
+fixed; the runtime revises which historical context the next decode can
+directly attend to.
+
+## Headline Result
+
+On Qwen2.5-7B-Instruct at 32K context, RepairKV reaches **91.0%** retrieval
+on a four-query needle-in-a-haystack task versus **24.5%** for the matched
+no-repair baseline at the same active-cache budget, with only **96** promoted
+tokens.
+
+![Matched-budget frontier across MQ-NIAH-2Q/4Q/6Q/8Q](paper/figures/frontier_raw_overlay.png)
+
+> *Raw `Q_2` score under matched resumed-cache budgets. Solid:
+> RepairKV; dotted: matched no-repair. Right labels: query count and
+> `Δ_96` (gain at `K=96`).*
+
+## Method at a Glance
+
+At each pause boundary, the abstraction has three objects:
+
+- `C_base`: active evictable KV, with `|C_base| = B_base` (base
+  active-cache budget).
+- `W_N`: offloaded evicted KV, hidden from decoding unless promoted.
+- `s`: the pause-boundary signal used to score evicted KV (a new user
+  query, a tool result, the model's recent generation, or other tokens
+  indicating upcoming significance).
+
+The repair operator chooses `S_K(s) ⊆ W_N` with `|S_K| ≤ K`, and resumes
+from `C_repair = C_base ∪ S_K` at resumed active-cache budget
+`|C_repair| ≤ B_base + K`. The matched no-repair baseline `B_match` reaches
+the same active budget by applying the base eviction policy at
+`B_base + K`, so both conditions decode under the same number of active
+context KV rows.
+
+The current prototype scores rows with post-RoPE `Q_2` query tensors
+against active and offloaded keys, then expands each top-ranked anchor
+into a right-biased `(L, R) = (2, 20)` local burst under a strict `K`
+budget.
+
+## Scope and Prerequisites
+
+- The matched budget is the resumed active context KV budget. RepairKV also
+  keeps an offloaded evicted-KV store; storage, scoring, and transfer costs
+  are reported separately as service costs.
+- The runtime figure is a single-node capacity envelope for score/select/
+  promote mechanics, not a trace-backed distribution of real tool-call wait
+  times.
+- Paper-grade GPU runs assume local model weights under `models/`, the
+  vendored `ruler/` checkout, CUDA/PyTorch, and enough GPU memory for the
+  selected model and context length.
+- CPU tests and figure-rendering checks can be run without launching new GPU
+  experiments.
+
+## Evidence in This Repository
+
+- **Controlled benchmark.** Split-query multi-query needle-in-a-haystack
+  (MQ-NIAH) derived from RULER, providing explicit cross-turn relevance
+  shifts and annotated future-relevant spans.
+- **Primary model.** Qwen2.5-7B-Instruct at 32K rendered context on a
+  single RTX PRO 6000 Blackwell GPU.
+- **Matched-budget frontier.** MQ-NIAH-2Q/4Q/6Q/8Q sweeps over
+  `K = 8, 16, 24, 32, 48, 64, 80, 96, 128`. Random-K and Oldest-K stay
+  near matched no-repair; RepairKV beats both content-agnostic controls
+  on every balanced partition at `K = 128`.
+- **Next-turn signal specificity.** At `K = 48` on MQ-NIAH-4Q,
+  RepairKV gains `+0.326` over matched no-repair while StaleQ-K and
+  WrongQ-K stay within `+0.028`. Refresh-buffered reaches `1.000`,
+  showing that relevant rows remain available for stronger selectors.
+- **Repeated relevance shifts.** Five-turn MQ-NIAH-8Q revisit schedule
+  (`K = 80`, `n = 24`): RepairKV gains `+0.542` over matched no-repair on
+  non-initial turns (95% CI `[0.458, 0.620]`), while Random-K and
+  Oldest-K gain only `+0.010` and `+0.021`.
+- **Eviction-policy sensitivity.** RepairKV improves over each
+  policy's matched no-repair baseline under SnapKV-style, H2O-style,
+  StreamingLLM-style, and Scissorhands-style first-stage eviction.
+- **Real-repository diagnostic.** 48 callsite examples from 12 pinned
+  open-source repositories drawn from the SWE-bench pool. At `K = 192`,
+  event-only RepairKV improves exact identifier accuracy from
+  **18.8%** (matched no-repair) to **72.9%**; label-assisted references
+  (File-gated RepairKV at 83.3%, AnchorWindow-K at 89.6%) show remaining
+  headroom. Not a SWE-bench issue-resolution benchmark.
+- **Runtime envelope.** At `K = 5000`, p95 repair latency is
+  **50 ms** at 32K offloaded candidates, **1.20 s** at 1M, and
+  **4.64 s** at 4M. At `K = 96`, the full repair takes ~**110 ms**
+  (p95) versus ~2.13 s for full-prefix prefill on the same system.
+
+## Paper
+
+- Source: `paper/main.tex`
+- Rebuilt PDF: `paper/main.pdf`
+- Figure renderer: `paper/scripts/render_paper_figures.py`
+- Writing and venue guide: kept locally, not tracked.
+
+Rebuild the paper from the repo root:
+
 ```bash
-git clone https://github.com/user/IdleKV.git
-cd IdleKV
-uv venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest tests/ -v
+.venv/bin/python paper/scripts/render_paper_figures.py
+cd paper
+latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 ```
 
-### GPU Experiments (A10G 24GB)
-```bash
-# On GPU machine
-git pull
-uv venv .venv
-source .venv/bin/activate
-make install
-pytest tests/ -v  # Should pass on GPU too
-```
+LaTeX intermediates are written to `paper/aux/` by `paper/.latexmkrc`.
+Undefined references, undefined citations, overfull boxes, or figure overlap
+should be fixed before a paper snapshot.
 
-## Running Experiments
+## Reproducing Checks
 
-### Step 1: Go/No-Go Check (< 10 min)
-Run the delayed-query stress gate. It compresses the ledger first, then feeds a
-post-compression query suffix and gives Phase 1 a strict 100ms idle window.
-This is a real TIR check; the old "question already in prefill" toy setup was a
-ceiling task on Llama-8B.
-```bash
-python scripts/go_no_go.py \
-  --model meta-llama/Llama-3.1-8B-Instruct \
-  --num-trials 12
-```
-
-The script defaults to `--ratio 0.7` because this synthetic gate typically
-stays at ceiling for `r=0.5`. Main experiments should still sweep the planned
-compression ratios.
-Treat this gate as a mechanism check for delayed-query recovery, not as a
-substitute for the full RULER/LongBench experiment suite.
-
-### Step 2: Small Scouts First
-Before launching the broader matrix, run the reduced scouts that choose the
-final settings:
-```bash
-# Reduced two-model scout that already completed on this machine
-python scripts/run_experiments.py --config configs/preliminary_idlekv.yaml --only-idlekv
-
-# Qwen seed follow-up scout
-python scripts/run_experiments.py --config configs/qwen_seed_followup.yaml --only-idlekv
-```
-
-Current critical read after those scouts:
-- `Phase 1 @ 100ms` is the best-supported operating point
-- `Phase 2` is not part of the core story until it is debugged and rescued
-- `llama8b` on `RULER 4K` is ceiling, so one harder Llama probe is more useful
-  than more 4K ceiling runs
-- for the live next-step plan, read `STATUS.md`
-
-Focused next steps:
-```bash
-# Stochastic main-method matrix
-python scripts/run_experiments.py --config configs/stochastic_core.yaml
-
-# Decode operating-point check
-python scripts/throughput_spotcheck.py \
-  --model Qwen/Qwen2.5-7B-Instruct \
-  --context-length 4096 \
-  --num-trials 3 \
-  --num-measure-tokens 128
-
-# Tiny harder Llama support probe
-python scripts/run_experiments.py \
-  --config configs/llama_hardness_probe.yaml \
-  --num-samples 10
-
-# Minimal shadow-buffer mechanism ablation
-python scripts/run_experiments.py \
-  --config configs/scale_mechanism_ablation.yaml \
-  --only-ablations
-
-# Historical short-idle workshop-core reference matrix
-python scripts/run_experiments.py --config configs/scale_core.yaml
-```
-
-### Step 3: Broader A10G Expansion Matrix
-Once the scouts have locked the settings, the preferred main-method run is
-`configs/stochastic_core.yaml`. The older workshop-core reference matrix in
-`configs/scale_core.yaml` is still useful for the narrower short-idle claim,
-and the broader single-A10G matrix in `configs/main.yaml` remains an
-exploratory expansion path rather than the default paper run. On one A10G, the
-broader stable path is:
-- baselines run on `RULER 4K` plus `LongBench`
-- IdleKV and ablations default to `RULER 4K` at `r=0.7`
-- `sync_refresh` excluded from the default matrix because its clean isolated
-  `4K` path still OOMs on this hardware
-- `LongBench + IdleKV` stays follow-up work on this box until decode-time cache
-  growth is optimized beyond the current HF `DynamicCache` concat path
-
-Use explicit follow-up overrides for `8K` RULER, `sync_refresh`, or
-`LongBench + IdleKV` once decode/Phase 2 memory work improves or you move to a
-larger-memory GPU.
-
-For a larger-memory scale-up run, start from:
-```bash
-python scripts/run_experiments.py --config configs/a100_scaleup.yaml --dry-run --model llama8b
-```
+Run the focused active diagnostic tests:
 
 ```bash
-# Preview the broader A10G matrix
-python scripts/run_experiments.py --config configs/main.yaml --dry-run --model llama8b
+.venv/bin/python -m pytest \
+  phases/phase15_real_repo_relevance_shift/tests \
+  phases/phase6_repair/tests/test_runner.py -q
 ```
 
-Then run the actual subsets:
+Run focused paper and closure tests:
+
 ```bash
-# Quick baseline comparison
-python scripts/run_experiments.py --config configs/main.yaml --only-baselines --model llama8b
-
-# IdleKV study on the stable A10G path
-python scripts/run_experiments.py --config configs/main.yaml --only-idlekv --model llama8b
-
-# Broader A10G exploratory suite
-python scripts/run_experiments.py --config configs/main.yaml --model llama8b --seed 42
+.venv/bin/python -m pytest \
+  phases/phase14_critical_flaw_closure/tests/test_audit_phase14_readiness.py \
+  phases/phase13_iteration_framework/tests/test_paper_language.py \
+  phases/phase13_iteration_framework/tests/test_framework.py \
+  phases/phase10_expansion/tests/test_multiturn.py \
+  phases/phase10_expansion/tests/test_multiturn_runner.py -q
 ```
 
-### Step 4: Generate Figures
+Run the broader CPU-side suite:
+
 ```bash
-python scripts/plot_figures.py --results-dir results/
+.venv/bin/python -m pytest -q
 ```
 
-## Repository Structure
-```
-IdleKV/
-├── STATUS.md                # Current scope, handoff, and run plan
-├── README.md                # High-level project entrypoint
-├── STOCHASTIC_ANYTIME_REPAIR_REFINED.md # Main-method proposal and paper rewrite
-├── SETUP.md                 # Environment and run instructions
-├── TASKS.md                 # Execution checklist and experiment plan
-├── idlekv/
-│   ├── core/                    # Core IdleKV components
-│   │   ├── compression.py       # CompressedKVManager (main interface)
-│   │   ├── anytime_repair.py   # Shared stochastic repair primitives
-│   │   ├── phase1_rescore.py   # Shadow-only / merged candidate repair
-│   │   ├── phase2_refresh.py   # Explicit full-refresh control path
-│   │   ├── scheduler.py        # Policy-driven idle-time scheduler
-│   │   ├── shadow_buffer.py    # Recently evicted KV storage + positions
-│   │   └── query_buffer.py     # Recent query tracking
-│   ├── eval/                   # Benchmark implementations
-│   │   ├── ruler.py            # RULER needle-in-a-haystack
-│   │   ├── longbench.py        # LongBench multi-task
-│   │   └── metrics.py          # Evaluation utilities
-│   ├── simulation/             # Agentic workload simulation
-│   │   ├── harness.py          # Tool-call pause simulator
-│   │   └── tool_distributions.py
-│   ├── baselines/              # Baseline implementations
-│   │   └── kvpress_baselines.py
-│   └── utils/                  # Utilities
-│       ├── kv_cache.py         # DynamicCache/tuple compatibility
-│       ├── memory.py           # Memory monitoring
-│       └── timing.py           # Performance measurement
-├── configs/
-│   ├── main.yaml              # Main experiment configuration
-│   ├── stochastic_core.yaml   # Preferred stochastic anytime core matrix
-│   ├── preliminary_idlekv.yaml # Reduced scout used to choose main settings
-│   ├── qwen_seed_followup.yaml # Qwen-only seed robustness scout
-│   ├── scale_core.yaml        # SCALE workshop-core matrix
-│   ├── scale_mechanism_ablation.yaml # Minimal workshop mechanism ablation
-│   ├── llama_hardness_probe.yaml # Tiny harder Llama support probe
-│   ├── a100_scaleup.yaml      # Larger-memory expansion config
-│   └── models.yaml            # Model specifications
-├── scripts/
-│   ├── go_no_go.py            # Day 3 decision gate
-│   ├── run_experiments.py     # Full experiment runner
-│   ├── throughput_spotcheck.py # Decode operating-point confirmation
-│   └── plot_figures.py        # Result visualization
-└── tests/                     # Test suite (CPU compatible)
-```
+GPU experiments should start with the smallest smoke test that can falsify the
+design, then move to a locked run only after the smoke passes a written gate.
 
-## Hardware Note
+## Repository Map
 
-**Target hardware:** Single NVIDIA A10G (~24GB VRAM)
+- `paper/`: ICML-style paper draft, figure assets, and rendering scripts.
+- `phases/phase6_repair/`: core matched-budget repair protocol, selectors,
+  reporting, and unit tests.
+- `phases/phase9_experiment_deepening/` through
+  `phases/phase14_critical_flaw_closure/`: completed experiment expansions,
+  smoke evaluators, locked-run wrappers, and paper-readiness audits.
+- `phases/phase15_real_repo_relevance_shift/`: completed appendix
+  diagnostic for real-repository relevance shifts.
+- `phases/phase18_pre_submission/`: pre-submission supplement (selector
+  ablations and time-budgeted query-aware baselines).
+- `phases/<phase>/saved_results/`: small tracked summaries from earlier
+  runs, kept so the repo retains a lightweight memory of canonical
+  outputs even if local generated `results/` trees are pruned.
+- `docs/`: project status and result-retention notes.
+- `models/`: local model weights; ignored by git.
+- `ruler/`: vendored RULER checkout; treated as external benchmark code.
 
-On A10G-class GPUs, the default path is to keep the compressed working cache on
-GPU and offload the full prefill KV backup to CPU (`offload_full_kv: true`).
-This avoids exhausting 24GB VRAM while still enabling Phase 2 refresh during
-idle windows.
+## Experiment Vocabulary
 
-Verified current operating point on this box:
-- baseline matrix supports `RULER 4K` plus `LongBench`
-- IdleKV/ablation matrix defaults to `RULER 4K` at `r=0.7`
-- `8K` IdleKV remains a follow-up target and is not part of the current default A10G path
-- `sync_refresh` is implemented but not part of the default A10G sweep because
-  its clean isolated `4K` path still OOMs
-- `LongBench + IdleKV` remains follow-up work until the decode cache path is
-  made less allocation-heavy on long generations
+- `Matched no-repair` (`B_match`): no repair under the same resumed
+  active-cache budget. Primary baseline for all main claims.
+- `RepairKV`: scores evicted KV rows against the next-turn signal and
+  promotes a `K`-budgeted subset back into the active cache before
+  decoding resumes.
+- `Random-K`, `Oldest-K`: content-agnostic restore controls that promote
+  from the same evicted KV store as RepairKV without scoring against the
+  next-turn signal.
+- `StaleQ-K`: scores using the previous-turn query rather than the
+  upcoming one. Specificity control.
+- `WrongQ-K`: scores using another example's next-turn query.
+  Specificity control.
+- `Refresh-buffered`: reselects the full resumed active budget from active
+  plus offloaded rows using the next-turn signal. A method-boundary
+  reference for selector headroom, not a deployable full-prefix recompute
+  baseline.
+- `ToolFile-K`: file-name-assisted control for the real-repository
+  diagnostic, with oldest-row backfill.
+- `File-gated RepairKV`: label-assisted reference that restricts repair
+  candidates to the event-named file.
+- `AnchorWindow-K`: label-assisted locality reference for the
+  real-repository diagnostic.
+- `SpanRef-K`: appendix-only diagnostic over annotated future answer-span
+  groups. Enumerates feasible annotated span-group subsets with cost at
+  most `K`; not an implementable algorithm and not a universal upper
+  bound over all possible K-token repairs.
 
-On larger-memory GPUs, set `offload_full_kv: false` if you prefer to keep the full backup on-device and avoid CPU->GPU transfer during Phase 2 refresh.
+## Active Questions
+
+- What stronger next-turn-aware selectors close the gap to Refresh-buffered
+  and the label-assisted references (File-gated, AnchorWindow-K)?
+- How should repair lift from token-row promotion to page- or block-level
+  promotion in a production KV-tiering stack?
+- What scheduler-aware policy decides when to repair across arbitrary turn,
+  tool, retrieval, or state-change boundaries rather than only at the
+  fixed two-turn pause boundary?
+- What trace-scheduled repair experiment best connects the
+  runtime-capacity envelope to real tool/environment wait distributions?
+
+## Git Hygiene
+
+Generated phase outputs, local model weights, LaTeX intermediates, and rendered
+plot binaries are ignored unless deliberately promoted. Keep paper-ready source
+changes in tracked code, `.tex`, `.md`, and compact CSV artifacts that are
+needed to regenerate figures.

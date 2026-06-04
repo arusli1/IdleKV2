@@ -1,0 +1,8 @@
+kvpress
+nltk
+numpy
+PyYAML
+scipy
+torch
+transformers
+tqdm
